@@ -1,0 +1,20 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="#1B4332" rx="180"/>
+
+  <!-- Diamond icon (rotated square) -->
+  <g transform="translate(512, 512) rotate(45)">
+    <rect x="-200" y="-200" width="400" height="400" fill="#D4AF37" rx="40"/>
+    <rect x="-180" y="-180" width="360" height="360" fill="#1B4332" rx="36"/>
+    <rect x="-140" y="-140" width="280" height="280" fill="#D4AF37" rx="28"/>
+  </g>
+
+  <!-- Subtle shine effect -->
+  <defs>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#shine)" rx="180"/>
+</svg>

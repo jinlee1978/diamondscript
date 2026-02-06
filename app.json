@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "main": "node_modules/expo-router/entry.js",
+    "name": "DiamondScript",
+    "slug": "diamondscript",
+    "version": "1.0.0",
+    "scheme": "diamondscript",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1B4332"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.diamondscript.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "itms-apps"
+        ]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1B4332"
+      },
+      "package": "com.diamondscript.app",
+      "versionCode": 1,
+      "permissions": []
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "6486abad-f7fd-4a97-80ee-cf230466c24c"
+      }
+    }
+  }
+}
