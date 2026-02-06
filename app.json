@@ -18,8 +18,10 @@
       "buildNumber": "1",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
+          "itms-apps",
           "itms-apps"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

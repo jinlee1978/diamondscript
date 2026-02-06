@@ -1,0 +1,94 @@
+<svg width="1024" height="500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Clean dark gradient -->
+    <linearGradient id="fieldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1B4332;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0A1410;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Strong text shadow for legibility -->
+    <filter id="strongShadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000000" flood-opacity="0.8"/>
+    </filter>
+
+    <!-- Medium shadow for subtext -->
+    <filter id="mediumShadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Dark background for contrast -->
+  <rect width="1024" height="500" fill="url(#fieldGradient)"/>
+
+  <!-- Subtle field lines accent -->
+  <g opacity="0.06">
+    <line x1="0" y1="0" x2="300" y2="500" stroke="#FFFFFF" stroke-width="2"/>
+    <line x1="60" y1="0" x2="360" y2="500" stroke="#FFFFFF" stroke-width="2"/>
+  </g>
+
+  <!-- Diamond icon - right side, clear of text -->
+  <g transform="translate(850, 250)">
+    <!-- Main diamond - clean and sharp -->
+    <rect x="-65" y="-65" width="130" height="130" fill="#D4AF37" transform="rotate(45)"/>
+
+    <!-- Inner detail -->
+    <rect x="-45" y="-45" width="90" height="90" fill="none" stroke="#1B4332" stroke-width="3" transform="rotate(45)" opacity="0.5"/>
+
+    <!-- Baseball stitching -->
+    <g opacity="0.4">
+      <path d="M -40,-50 Q -25,-42 -40,-34" stroke="#1B4332" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M 40,34 Q 25,42 40,50" stroke="#1B4332" stroke-width="4" fill="none" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- Main title - LARGE and BOLD for legibility -->
+  <text x="50" y="140"
+        font-family="Arial Black, Arial, sans-serif"
+        font-size="110"
+        font-weight="900"
+        fill="#FFFFFF"
+        filter="url(#strongShadow)"
+        letter-spacing="-1">
+    DiamondScript
+  </text>
+
+  <!-- Tagline - Larger, clearer -->
+  <text x="50" y="210"
+        font-family="Arial, sans-serif"
+        font-size="44"
+        font-weight="700"
+        fill="#FFFFFF"
+        filter="url(#mediumShadow)"
+        letter-spacing="0.5">
+    Practice Plans for Baseball Coaches
+  </text>
+
+  <!-- Feature highlights - LARGER and MORE SPACED for legibility -->
+  <g font-family="Arial, sans-serif" font-size="36" font-weight="700" fill="#FFFFFF" filter="url(#mediumShadow)">
+
+    <!-- Feature 1 -->
+    <g transform="translate(50, 320)">
+      <circle cx="0" cy="-10" r="8" fill="#D4AF37"/>
+      <text x="30" y="0">Age-Optimized Drills</text>
+    </g>
+
+    <!-- Feature 2 -->
+    <g transform="translate(50, 380)">
+      <circle cx="0" cy="-10" r="8" fill="#D4AF37"/>
+      <text x="30" y="0">Smart Practice Plans</text>
+    </g>
+
+    <!-- Feature 3 -->
+    <g transform="translate(50, 440)">
+      <circle cx="0" cy="-10" r="8" fill="#D4AF37"/>
+      <text x="30" y="0">Instant Generation</text>
+    </g>
+  </g>
+
+  <!-- Bottom accent stripe -->
+  <rect x="0" y="470" width="1024" height="30" fill="#D4AF37" opacity="0.12"/>
+  <rect x="0" y="470" width="1024" height="4" fill="#D4AF37" opacity="0.5"/>
+
+  <!-- Top corner accent -->
+  <polygon points="1024,0 880,0 1024,100" fill="#D4AF37" opacity="0.08"/>
+</svg>
