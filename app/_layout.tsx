@@ -2,10 +2,10 @@ import React from 'react';
 import { Stack } from 'expo-router';
 import { PracticeProvider } from '../context/PracticeContext';
 import ErrorBoundary from '../components/ErrorBoundary';
-// import { initSentry } from '../src/config/sentry';
+import { initSentry } from '../src/config/sentry';
 
-// Initialize Sentry on app startup - TEMPORARILY DISABLED FOR DEBUGGING
-// initSentry();
+// Initialize Sentry on app startup
+initSentry();
 
 export default function RootLayout() {
   return (

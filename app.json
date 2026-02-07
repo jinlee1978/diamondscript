@@ -30,7 +30,7 @@
         "backgroundColor": "#1B4332"
       },
       "package": "com.diamondscript.app",
-      "versionCode": 9,
+      "versionCode": 10,
       "permissions": []
     },
     "plugins": [
@@ -39,7 +39,11 @@
         "expo-build-properties",
         {
           "android": {
-            "targetSdkVersion": 35
+            "targetSdkVersion": 35,
+            "newArchEnabled": false
+          },
+          "ios": {
+            "newArchEnabled": false
           }
         }
       ]
