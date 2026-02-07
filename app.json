@@ -30,7 +30,7 @@
         "backgroundColor": "#1B4332"
       },
       "package": "com.diamondscript.app",
-      "versionCode": 2,
+      "versionCode": 3,
       "targetSdkVersion": 35,
       "permissions": []
     },

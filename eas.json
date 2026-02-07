@@ -21,6 +21,10 @@
     },
     "production": {
       "distribution": "store",
+      "android": {
+        "compileSdkVersion": 35,
+        "targetSdkVersion": 35
+      },
       "env": {
         "NODE_ENV": "production"
       }
