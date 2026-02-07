@@ -30,12 +30,22 @@
         "backgroundColor": "#1B4332"
       },
       "package": "com.diamondscript.app",
-      "versionCode": 3,
+      "versionCode": 4,
       "targetSdkVersion": 35,
       "permissions": []
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "buildToolsVersion": "35.0.0"
+          }
+        }
+      ]
     ],
     "updates": {
       "fallbackToCacheTimeout": 0
