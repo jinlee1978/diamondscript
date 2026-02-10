@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, Share } from 'react-native';
 import { Stack } from 'expo-router';
 import { usePractice, CustomDrill } from '../context/PracticeContext';
@@ -81,25 +81,35 @@ export default function PracticeScreen() {
 
   const { warmupMinutes, cooldownMinutes, stationLayout, request, selectedDrills } = currentSession;
 
-  // Did the engine return fewer drills than requested?
-  const hasShortfall = selectedDrills.length < request.numDrills;
-  // Would upgrading to Pro unlock more drills for this age group?
-  const proPoolSize = hasShortfall
-    ? filterCandidates(SEED_DRILL_CATALOG, request.ageGroup, 'pro').length
-    : 0;
-  const upgradeHelps = hasShortfall && proPoolSize > selectedDrills.length;
+  // Memoize expensive drill filtering calculations
+  const { hasShortfall, upgradeHelps, canAddDrill, addableDrills } = useMemo(() => {
+    // Did the engine return fewer drills than requested?
+    const shortfall = selectedDrills.length < request.numDrills;
+    // Would upgrading to Pro unlock more drills for this age group?
+    const proPoolSize = shortfall
+      ? filterCandidates(SEED_DRILL_CATALOG, request.ageGroup, 'pro').length
+      : 0;
+    const helps = shortfall && proPoolSize > selectedDrills.length;
 
-  // Add-drill: free on T-Ball, Pro required for 8U–14U
-  const canAddDrill = tier === 'pro' || request.ageGroup === 'T_BALL';
-  const sessionDrillIds = new Set(
-    stationLayout.stations.flatMap((s) => s.drills.map((b) => b.drill.id)),
-  );
-  const addableDrills: Drill[] = canAddDrill
-    ? [
-        ...filterCandidates(SEED_DRILL_CATALOG, request.ageGroup, tier).filter((d) => !sessionDrillIds.has(d.id)),
-        ...customDrills.filter((c) => !sessionDrillIds.has(c.id)).map(customToDrill),
-      ]
-    : [];
+    // Add-drill: free on T-Ball, Pro required for 8U–14U
+    const canAdd = tier === 'pro' || request.ageGroup === 'T_BALL';
+    const sessionDrillIds = new Set(
+      stationLayout.stations.flatMap((s) => s.drills.map((b) => b.drill.id)),
+    );
+    const drills: Drill[] = canAdd
+      ? [
+          ...filterCandidates(SEED_DRILL_CATALOG, request.ageGroup, tier).filter((d) => !sessionDrillIds.has(d.id)),
+          ...customDrills.filter((c) => !sessionDrillIds.has(c.id)).map(customToDrill),
+        ]
+      : [];
+
+    return {
+      hasShortfall: shortfall,
+      upgradeHelps: helps,
+      canAddDrill: canAdd,
+      addableDrills: drills,
+    };
+  }, [selectedDrills.length, request.numDrills, request.ageGroup, tier, stationLayout.stations, customDrills]);
 
   const handleShare = async () => {
     try {

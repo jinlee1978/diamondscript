@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, ScrollView, FlatList, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { usePractice } from '../context/PracticeContext';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
 import { DrillCategory } from '../src/data/types';
@@ -21,7 +21,11 @@ export default function StarredScreen() {
   const [newCategory, setNewCategory] = useState<DrillCategory>('hitting');
   const [newEquipment, setNewEquipment] = useState('');
 
-  const starred = SEED_DRILL_CATALOG.filter((d) => starredDrills.has(d.id));
+  // Memoize filtered starred drills to prevent recalculation on every render
+  const starred = useMemo(
+    () => SEED_DRILL_CATALOG.filter((d) => starredDrills.has(d.id)),
+    [starredDrills]
+  );
   const showHeaders = customDrills.length > 0 && starred.length > 0;
   const canSave = newName.trim().length > 0 && newDesc.trim().length > 0;
 
@@ -127,82 +131,123 @@ export default function StarredScreen() {
   }
 
   // ── Main list ────────────────────────────────────────────────────────
+  // Combine custom and starred drills into a single flat array for FlatList
+  type DrillItem =
+    | { type: 'header'; title: string; id: string }
+    | { type: 'custom'; drill: typeof customDrills[0]; id: string }
+    | { type: 'starred'; drill: typeof starred[0]; id: string };
+
+  const drillItems: DrillItem[] = useMemo(() => {
+    const items: DrillItem[] = [];
+
+    if (customDrills.length > 0) {
+      if (showHeaders) {
+        items.push({ type: 'header', title: 'Custom', id: 'header-custom' });
+      }
+      customDrills.forEach(drill => {
+        items.push({ type: 'custom', drill, id: `custom-${drill.id}` });
+      });
+    }
+
+    if (starred.length > 0) {
+      if (showHeaders) {
+        items.push({ type: 'header', title: 'Starred', id: 'header-starred' });
+      }
+      starred.forEach(drill => {
+        items.push({ type: 'starred', drill, id: `starred-${drill.id}` });
+      });
+    }
+
+    return items;
+  }, [customDrills, starred, showHeaders]);
+
+  const renderDrillItem = ({ item }: { item: DrillItem }) => {
+    if (item.type === 'header') {
+      return <Text style={styles.sectionHeader}>{item.title}</Text>;
+    }
+
+    if (item.type === 'custom') {
+      const drill = item.drill;
+      return (
+        <View style={styles.card}>
+          <View style={styles.header}>
+            <Text style={styles.name}>{drill.name}</Text>
+            <View style={styles.headerRight}>
+              <TouchableOpacity
+                onPress={() => deleteCustomDrill(drill.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.deleteIcon}>{'\u00D7'}</Text>
+              </TouchableOpacity>
+              <CategoryBadge category={drill.category} />
+            </View>
+          </View>
+          <View style={styles.customBadge}>
+            <Text style={styles.customBadgeText}>Custom</Text>
+          </View>
+          <Text style={styles.description}>{drill.description}</Text>
+          {drill.equipment && drill.equipment.length > 0 && (
+            <View style={styles.equipmentSection}>
+              <Text style={styles.equipmentLabel}>Equipment: </Text>
+              <Text style={styles.equipmentList}>{drill.equipment.join(', ')}</Text>
+            </View>
+          )}
+        </View>
+      );
+    }
+
+    // type === 'starred'
+    const drill = item.drill;
+    return (
+      <View style={styles.card}>
+        <View style={styles.header}>
+          <Text style={styles.name}>{drill.name}</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() => toggleStar(drill.id)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.star}>{'\u2605'}</Text>
+            </TouchableOpacity>
+            <CategoryBadge category={drill.category} />
+          </View>
+        </View>
+        <Text style={styles.description}>{drill.description}</Text>
+        {drill.equipment && drill.equipment.length > 0 && (
+          <View style={styles.equipmentSection}>
+            <Text style={styles.equipmentLabel}>Equipment: </Text>
+            <Text style={styles.equipmentList}>{drill.equipment.join(', ')}</Text>
+          </View>
+        )}
+        <View style={styles.meta}>
+          <Text style={styles.metaItem}>Complexity {drill.complexityScore.toFixed(1)}</Text>
+          <Text style={styles.metaDot}>{'\u2022'}</Text>
+          <Text style={styles.metaItem}>Intensity {drill.physicalIntensity}/5</Text>
+          <Text style={styles.metaDot}>{'\u2022'}</Text>
+          <Text style={styles.metaItem}>{drill.minPlayers}+ players</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderHeader = () => (
+    <TouchableOpacity style={styles.createButton} onPress={() => setIsCreating(true)}>
+      <Text style={styles.createButtonText}>+ Create a Drill</Text>
+    </TouchableOpacity>
+  );
+
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-      <TouchableOpacity style={styles.createButton} onPress={() => setIsCreating(true)}>
-        <Text style={styles.createButtonText}>+ Create a Drill</Text>
-      </TouchableOpacity>
-
-      {/* Custom drills */}
-      {customDrills.length > 0 && (
-        <>
-          {showHeaders && <Text style={styles.sectionHeader}>Custom</Text>}
-          {customDrills.map((drill) => (
-            <View key={drill.id} style={styles.card}>
-              <View style={styles.header}>
-                <Text style={styles.name}>{drill.name}</Text>
-                <View style={styles.headerRight}>
-                  <TouchableOpacity
-                    onPress={() => deleteCustomDrill(drill.id)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={styles.deleteIcon}>{'\u00D7'}</Text>
-                  </TouchableOpacity>
-                  <CategoryBadge category={drill.category} />
-                </View>
-              </View>
-              <View style={styles.customBadge}>
-                <Text style={styles.customBadgeText}>Custom</Text>
-              </View>
-              <Text style={styles.description}>{drill.description}</Text>
-              {drill.equipment && drill.equipment.length > 0 && (
-                <View style={styles.equipmentSection}>
-                  <Text style={styles.equipmentLabel}>Equipment: </Text>
-                  <Text style={styles.equipmentList}>{drill.equipment.join(', ')}</Text>
-                </View>
-              )}
-            </View>
-          ))}
-        </>
-      )}
-
-      {/* Starred catalog drills */}
-      {starred.length > 0 && (
-        <>
-          {showHeaders && <Text style={styles.sectionHeader}>Starred</Text>}
-          {starred.map((drill) => (
-            <View key={drill.id} style={styles.card}>
-              <View style={styles.header}>
-                <Text style={styles.name}>{drill.name}</Text>
-                <View style={styles.headerRight}>
-                  <TouchableOpacity
-                    onPress={() => toggleStar(drill.id)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={styles.star}>{'\u2605'}</Text>
-                  </TouchableOpacity>
-                  <CategoryBadge category={drill.category} />
-                </View>
-              </View>
-              <Text style={styles.description}>{drill.description}</Text>
-              {drill.equipment && drill.equipment.length > 0 && (
-                <View style={styles.equipmentSection}>
-                  <Text style={styles.equipmentLabel}>Equipment: </Text>
-                  <Text style={styles.equipmentList}>{drill.equipment.join(', ')}</Text>
-                </View>
-              )}
-              <View style={styles.meta}>
-                <Text style={styles.metaItem}>Complexity {drill.complexityScore.toFixed(1)}</Text>
-                <Text style={styles.metaDot}>{'\u2022'}</Text>
-                <Text style={styles.metaItem}>Intensity {drill.physicalIntensity}/5</Text>
-                <Text style={styles.metaDot}>{'\u2022'}</Text>
-                <Text style={styles.metaItem}>{drill.minPlayers}+ players</Text>
-              </View>
-            </View>
-          ))}
-        </>
-      )}
-    </ScrollView>
+    <FlatList
+      style={styles.scroll}
+      contentContainerStyle={styles.container}
+      data={drillItems}
+      renderItem={renderDrillItem}
+      keyExtractor={(item) => item.id}
+      ListHeaderComponent={renderHeader}
+      initialNumToRender={10}
+      maxToRenderPerBatch={5}
+      windowSize={5}
+    />
   );
 }
 

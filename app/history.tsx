@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { usePractice } from '../context/PracticeContext';
 import CategoryBadge from '../components/CategoryBadge';
@@ -44,61 +44,60 @@ export default function HistoryScreen() {
     );
   }
 
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-      {visibleHistory.map((entry) => {
-        const { session, savedAt } = entry;
-        const categories = CATEGORY_ORDER.filter((cat) =>
-          session.selectedDrills.some((d) => d.category === cat)
-        );
+  const renderHistoryItem = ({ item }: { item: typeof visibleHistory[0] }) => {
+    const { session, savedAt } = item;
+    const categories = CATEGORY_ORDER.filter((cat) =>
+      session.selectedDrills.some((d) => d.category === cat)
+    );
 
-        return (
-          <TouchableOpacity
-            key={savedAt}
-            style={styles.card}
-            onPress={() => {
-              restoreSession(session);
-              router.push('/practice');
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardDate}>{formatDate(savedAt)}</Text>
-              <View style={styles.cardActions}>
-                <View onStartShouldSetResponder={() => true}>
-                  <TouchableOpacity
-                    onPress={() => deletePracticeHistory(savedAt)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={styles.cardDelete}>{'\u00D7'}</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.cardChevron}>{'\u203A'}</Text>
-              </View>
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => {
+          restoreSession(session);
+          router.push('/practice');
+        }}
+        activeOpacity={0.8}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardDate}>{formatDate(savedAt)}</Text>
+          <View style={styles.cardActions}>
+            <View onStartShouldSetResponder={() => true}>
+              <TouchableOpacity
+                onPress={() => deletePracticeHistory(savedAt)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.cardDelete}>{'\u00D7'}</Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.cardMeta}>
-              <Text style={styles.cardMetaText}>
-                {formatAgeGroup(session.request.ageGroup)}
-              </Text>
-              <Text style={styles.cardMetaDot}>&#8226;</Text>
-              <Text style={styles.cardMetaText}>
-                {session.selectedDrills.length} drill{session.selectedDrills.length !== 1 ? 's' : ''}
-              </Text>
-              <Text style={styles.cardMetaDot}>&#8226;</Text>
-              <Text style={styles.cardMetaText}>
-                {session.stationLayout.totalWallClockMinutes} min
-              </Text>
-            </View>
-            <View style={styles.cardCategories}>
-              {categories.map((cat) => (
-                <CategoryBadge key={cat} category={cat} />
-              ))}
-            </View>
-          </TouchableOpacity>
-        );
-      })}
+            <Text style={styles.cardChevron}>{'\u203A'}</Text>
+          </View>
+        </View>
+        <View style={styles.cardMeta}>
+          <Text style={styles.cardMetaText}>
+            {formatAgeGroup(session.request.ageGroup)}
+          </Text>
+          <Text style={styles.cardMetaDot}>&#8226;</Text>
+          <Text style={styles.cardMetaText}>
+            {session.selectedDrills.length} drill{session.selectedDrills.length !== 1 ? 's' : ''}
+          </Text>
+          <Text style={styles.cardMetaDot}>&#8226;</Text>
+          <Text style={styles.cardMetaText}>
+            {session.stationLayout.totalWallClockMinutes} min
+          </Text>
+        </View>
+        <View style={styles.cardCategories}>
+          {categories.map((cat) => (
+            <CategoryBadge key={cat} category={cat} />
+          ))}
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
-      {tier === 'free' && history.length > FREE_HISTORY_LIMIT && (
+  const renderFooter = () => {
+    if (tier === 'free' && history.length > FREE_HISTORY_LIMIT) {
+      return (
         <TouchableOpacity
           style={styles.upgradeNote}
           onPress={() => router.push('/upgrade')}
@@ -108,8 +107,23 @@ export default function HistoryScreen() {
             &#9733; Keep unlimited history with <Text style={styles.upgradeNoteBold}>Pro</Text>
           </Text>
         </TouchableOpacity>
-      )}
-    </ScrollView>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <FlatList
+      style={styles.scroll}
+      contentContainerStyle={styles.container}
+      data={visibleHistory}
+      renderItem={renderHistoryItem}
+      keyExtractor={(item) => item.savedAt.toString()}
+      ListFooterComponent={renderFooter}
+      initialNumToRender={10}
+      maxToRenderPerBatch={5}
+      windowSize={5}
+    />
   );
 }
 
