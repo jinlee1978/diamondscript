@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { usePractice } from '../context/PracticeContext';
 
@@ -50,7 +50,7 @@ export default function UpgradeScreen() {
       if (success) {
         Alert.alert(
           'Purchases Restored!',
-          'Your Pro subscription has been restored.',
+          'Your Pro purchase has been restored.',
           [{ text: 'OK', onPress: () => router.back() }],
         );
       } else {
@@ -65,13 +65,25 @@ export default function UpgradeScreen() {
     }
   };
 
+  const handlePrivacyPolicy = () => {
+    // TODO: Replace with actual hosted privacy policy URL
+    const privacyUrl = 'https://diamondscript.app/privacy'; // Placeholder
+    Linking.openURL(privacyUrl).catch(() => {
+      Alert.alert(
+        'Privacy Policy',
+        'See PRIVACY_POLICY.md in the app repository for our complete privacy policy.',
+        [{ text: 'OK' }],
+      );
+    });
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerBadge}>PRO</Text>
         <Text style={styles.headerTitle}>Unlock DiamondScript Pro</Text>
-        <Text style={styles.headerPrice}>$7.99 <Text style={styles.headerPeriod}>/ month</Text></Text>
+        <Text style={styles.headerPrice}>$9.99 <Text style={styles.headerPeriod}>one-time</Text></Text>
       </View>
 
       {/* Feature list */}
@@ -95,12 +107,12 @@ export default function UpgradeScreen() {
         activeOpacity={0.85}
       >
         <Text style={styles.ctaText}>
-          {isProcessing ? 'Processing...' : 'Subscribe — $7.99/mo'}
+          {isProcessing ? 'Processing...' : 'Buy Pro — $9.99'}
         </Text>
       </TouchableOpacity>
 
       <Text style={styles.disclaimer}>
-        Cancel anytime. No commitment.
+        One-time purchase. Lifetime access.
       </Text>
 
       {/* Restore purchases button */}
@@ -111,6 +123,15 @@ export default function UpgradeScreen() {
         activeOpacity={0.7}
       >
         <Text style={styles.restoreText}>Restore Purchases</Text>
+      </TouchableOpacity>
+
+      {/* Privacy Policy link */}
+      <TouchableOpacity
+        style={styles.privacyButton}
+        onPress={handlePrivacyPolicy}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.privacyText}>Privacy Policy</Text>
       </TouchableOpacity>
     </View>
   );
@@ -220,5 +241,16 @@ const styles = StyleSheet.create({
     color: '#1B4332',
     fontSize: 14,
     fontWeight: '600',
+  },
+  privacyButton: {
+    marginTop: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  privacyText: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
   },
 });

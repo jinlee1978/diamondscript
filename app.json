@@ -30,7 +30,7 @@
         "backgroundColor": "#1B4332"
       },
       "package": "com.diamondscript.app",
-      "versionCode": 27,
+      "versionCode": 28,
       "permissions": []
     },
     "plugins": [

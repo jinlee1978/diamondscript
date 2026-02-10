@@ -3,85 +3,77 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AgeGroup, PracticeRequest, PracticeSession, DrillCategory, Drill } from '../src/data/types';
 import { generatePracticeSession } from '../src/core/engine/index';
 import { applyTierConstraints } from '../src/subscription/featureGate';
-import { SubscriptionTier } from '../src/subscription/tiers';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
-import { getSubscriptionInfo, initiateUpgrade, restorePurchases } from '../src/subscription/service';
+import { useSubscription } from './SubscriptionContext';
+import { useDrills, CustomDrill } from './DrillsContext';
 
 const STORAGE_KEY = '@diamondscript/lastRequest';
-const STARRED_KEY = '@diamondscript/starredDrills';
-const CUSTOM_DRILLS_KEY = '@diamondscript/customDrills';
 const HISTORY_KEY = '@diamondscript/history';
-
-export interface CustomDrill {
-  id: string;
-  name: string;
-  description: string;
-  category: DrillCategory;
-  equipment: string[];
-  createdAt: number;
-}
 
 export interface HistoryEntry {
   session: PracticeSession;
   savedAt: number;
 }
 
+// Re-export for backward compatibility
+export type { CustomDrill };
+
 interface PracticeContextValue {
+  // From SubscriptionContext
   tier: 'free' | 'pro';
-  lastRequest: PracticeRequest | null;
-  currentSession: PracticeSession | null;
-  isLoading: boolean;
-  generateSession: (request: PracticeRequest) => PracticeSession;
+  upgradeToPro: () => Promise<boolean>;
+  restorePurchases: () => Promise<boolean>;
+  // From DrillsContext
   starredDrills: Set<string>;
   toggleStar: (drillId: string) => void;
   customDrills: CustomDrill[];
   addCustomDrill: (name: string, description: string, category: DrillCategory, equipment: string[]) => void;
   deleteCustomDrill: (id: string) => void;
+  // From PracticeContext
+  lastRequest: PracticeRequest | null;
+  currentSession: PracticeSession | null;
+  isLoading: boolean;
+  generateSession: (request: PracticeRequest) => PracticeSession;
   swapDrill: (stationIndex: number, blockIndex: number, newDrill: Drill) => void;
   addDrillToSession: (newDrill: Drill) => void;
   history: HistoryEntry[];
   restoreSession: (session: PracticeSession) => void;
   deletePracticeHistory: (savedAt: number) => void;
-  upgradeToPro: () => Promise<boolean>;
-  restorePurchases: () => Promise<boolean>;
 }
 
 const PracticeContext = createContext<PracticeContextValue | null>(null);
 
 export function PracticeProvider({ children }: { children: React.ReactNode }) {
-  const [tier, setTier] = useState<SubscriptionTier>('free');
+  // Get data from other contexts
+  const subscription = useSubscription();
+  const drills = useDrills();
+
   const [lastRequest, setLastRequest] = useState<PracticeRequest | null>(null);
   const [currentSession, setCurrentSession] = useState<PracticeSession | null>(null);
-  const [starredDrills, setStarredDrills] = useState<Set<string>>(new Set());
-  const [customDrills, setCustomDrills] = useState<CustomDrill[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load subscription tier on mount
-  useEffect(() => {
-    getSubscriptionInfo().then((info) => {
-      setTier(info.tier);
-    });
-  }, []);
-
   // Load persisted request on mount
   useEffect(() => {
+    let mounted = true;
+
     const defaultRequest: PracticeRequest = {
       ageGroup: AgeGroup.AGE_10U,
       experienceLevel: 2,
       intensity: 3,
       numDrills: 4,
       assistantCoaches: 0,
-      subscriptionTier: tier,
+      subscriptionTier: subscription.tier,
     };
 
     AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
+        if (!mounted) return;
         if (raw) {
           try {
             const parsed = JSON.parse(raw);
             // Update tier in loaded request to match current subscription
-            setLastRequest({ ...parsed, subscriptionTier: tier });
+            setLastRequest({ ...parsed, subscriptionTier: subscription.tier });
           } catch {
             // Corrupted — fall back to default
             setLastRequest(defaultRequest);
@@ -91,60 +83,28 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {
-        setLastRequest(defaultRequest);
+        if (mounted) {
+          setLastRequest(defaultRequest);
+        }
       })
       .finally(() => {
-        setIsLoading(false);
+        if (mounted) {
+          setIsLoading(false);
+        }
       });
-  }, [tier]);
 
-  // Load persisted starred drills on mount
-  useEffect(() => {
-    AsyncStorage.getItem(STARRED_KEY)
-      .then((raw) => {
-        if (raw) {
-          try {
-            setStarredDrills(new Set(JSON.parse(raw)));
-          } catch {
-            // Corrupted — start with empty set
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  const toggleStar = useCallback((drillId: string) => {
-    setStarredDrills((prev) => {
-      const next = new Set(prev);
-      if (next.has(drillId)) {
-        next.delete(drillId);
-      } else {
-        next.add(drillId);
-      }
-      AsyncStorage.setItem(STARRED_KEY, JSON.stringify([...next]));
-      return next;
-    });
-  }, []);
-
-  // Load persisted custom drills on mount
-  useEffect(() => {
-    AsyncStorage.getItem(CUSTOM_DRILLS_KEY)
-      .then((raw) => {
-        if (raw) {
-          try {
-            setCustomDrills(JSON.parse(raw));
-          } catch {
-            // Corrupted — start empty
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
+    return () => {
+      mounted = false;
+    };
+  }, [subscription.tier]);
 
   // Load persisted history on mount
   useEffect(() => {
+    let mounted = true;
+
     AsyncStorage.getItem(HISTORY_KEY)
       .then((raw) => {
+        if (!mounted) return;
         if (raw) {
           try {
             setHistory(JSON.parse(raw));
@@ -154,22 +114,10 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {});
-  }, []);
 
-  const addCustomDrill = useCallback((name: string, description: string, category: DrillCategory, equipment: string[]) => {
-    setCustomDrills((prev) => {
-      const next = [...prev, { id: Date.now().toString(), name, description, category, equipment, createdAt: Date.now() }];
-      AsyncStorage.setItem(CUSTOM_DRILLS_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, []);
-
-  const deleteCustomDrill = useCallback((id: string) => {
-    setCustomDrills((prev) => {
-      const next = prev.filter((d) => d.id !== id);
-      AsyncStorage.setItem(CUSTOM_DRILLS_KEY, JSON.stringify(next));
-      return next;
-    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const swapDrill = useCallback((stationIndex: number, blockIndex: number, newDrill: Drill) => {
@@ -243,7 +191,7 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
 
   const generateSession = useCallback((request: PracticeRequest): PracticeSession => {
     // Apply tier constraints (intensity lock, station split lock, catalog filter)
-    const sanitized = applyTierConstraints(request, tier);
+    const sanitized = applyTierConstraints(request, subscription.tier);
 
     // Run the engine
     const session = generatePracticeSession(sanitized, SEED_DRILL_CATALOG);
@@ -262,48 +210,31 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
     });
 
     return session;
-  }, [tier]);
-
-  const upgradeToPro = useCallback(async (): Promise<boolean> => {
-    const success = await initiateUpgrade();
-    if (success) {
-      // Reload subscription info to update tier
-      const info = await getSubscriptionInfo();
-      setTier(info.tier);
-    }
-    return success;
-  }, []);
-
-  const handleRestorePurchases = useCallback(async (): Promise<boolean> => {
-    const success = await restorePurchases();
-    if (success) {
-      // Reload subscription info to update tier
-      const info = await getSubscriptionInfo();
-      setTier(info.tier);
-    }
-    return success;
-  }, []);
+  }, [subscription.tier]);
 
   return (
     <PracticeContext.Provider
       value={{
-        tier,
+        // Subscription
+        tier: subscription.tier,
+        upgradeToPro: subscription.upgradeToPro,
+        restorePurchases: subscription.restorePurchases,
+        // Drills
+        starredDrills: drills.starredDrills,
+        toggleStar: drills.toggleStar,
+        customDrills: drills.customDrills,
+        addCustomDrill: drills.addCustomDrill,
+        deleteCustomDrill: drills.deleteCustomDrill,
+        // Practice
         lastRequest,
         currentSession,
         isLoading,
         generateSession,
-        starredDrills,
-        toggleStar,
-        customDrills,
-        addCustomDrill,
-        deleteCustomDrill,
         swapDrill,
         addDrillToSession,
         history,
         restoreSession,
         deletePracticeHistory,
-        upgradeToPro,
-        restorePurchases: handleRestorePurchases,
       }}
     >
       {children}

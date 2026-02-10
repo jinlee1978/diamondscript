@@ -17,12 +17,16 @@ import config from './env';
 export function initSentry() {
   // Only initialize if crash reporting is enabled and DSN is configured
   if (!config.enableCrashReporting) {
-    console.log('📊 Sentry: Disabled in development');
+    if (__DEV__) {
+      console.log('📊 Sentry: Disabled in development');
+    }
     return;
   }
 
   if (!config.sentryDsn) {
-    console.warn('⚠️ Sentry: DSN not configured. Set EXPO_PUBLIC_SENTRY_DSN in your environment.');
+    if (__DEV__) {
+      console.warn('⚠️ Sentry: DSN not configured. Set EXPO_PUBLIC_SENTRY_DSN in your environment.');
+    }
     return;
   }
 
@@ -83,9 +87,13 @@ export function initSentry() {
       },
     });
 
-    console.log('✅ Sentry initialized successfully');
+    if (__DEV__) {
+      console.log('✅ Sentry initialized successfully');
+    }
   } catch (error) {
-    console.error('❌ Failed to initialize Sentry:', error);
+    if (__DEV__) {
+      console.error('❌ Failed to initialize Sentry:', error);
+    }
   }
 }
 

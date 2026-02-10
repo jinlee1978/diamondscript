@@ -38,8 +38,10 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error details for monitoring
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    // Log error details for monitoring (dev only)
+    if (__DEV__) {
+      console.error('ErrorBoundary caught an error:', error, errorInfo);
+    }
 
     this.setState({
       error,
