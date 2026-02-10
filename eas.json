@@ -22,7 +22,8 @@
     "production": {
       "distribution": "store",
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "EXPO_PUBLIC_FORCE_PRO_ACCESS": "true"
       }
     }
   }

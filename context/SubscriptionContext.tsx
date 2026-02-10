@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { SubscriptionTier } from '../src/subscription/tiers';
 import { getSubscriptionInfo, initiateUpgrade, restorePurchases } from '../src/subscription/service';
+import config from '../src/config/env';
 
 interface SubscriptionContextValue {
   tier: SubscriptionTier;
@@ -19,11 +20,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
     getSubscriptionInfo().then((info) => {
       if (mounted) {
-        // INTERNAL TESTING BYPASS: Force PRO tier for all users during testing phase
-        // TODO: Remove this bypass before production release
-        if (__DEV__) {
+        // INTERNAL TESTING BYPASS: Force PRO tier when flag is set
+        // Remove EXPO_PUBLIC_FORCE_PRO_ACCESS from eas.json before production release
+        if (config.forceProAccess) {
           setTier(SubscriptionTier.PRO);
-          console.log('🔓 DEV BYPASS: Tier forced to PRO for internal testing');
+          if (__DEV__) {
+            console.log('🔓 INTERNAL TESTING: PRO tier forced via forceProAccess flag');
+          }
         } else {
           setTier(info.tier);
         }

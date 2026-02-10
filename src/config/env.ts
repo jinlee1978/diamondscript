@@ -32,6 +32,7 @@ interface Config {
   enableCrashReporting: boolean;
   enableAnalytics: boolean;
   enableDebugLogs: boolean;
+  forceProAccess: boolean; // For internal testing - grants Pro to all users
 
   // Subscription (for future payment integration)
   revenueCatApiKey?: string;
@@ -75,6 +76,7 @@ const config: Config = {
   enableCrashReporting: env === 'production' || env === 'staging',
   enableAnalytics: env === 'production',
   enableDebugLogs: env === 'development',
+  forceProAccess: process.env.EXPO_PUBLIC_FORCE_PRO_ACCESS === 'true',
 
   // Subscription (will be set when RevenueCat is integrated)
   revenueCatApiKey: process.env.EXPO_PUBLIC_REVENUECAT_API_KEY,
