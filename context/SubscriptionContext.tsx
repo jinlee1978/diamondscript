@@ -19,7 +19,14 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
     getSubscriptionInfo().then((info) => {
       if (mounted) {
-        setTier(info.tier);
+        // INTERNAL TESTING BYPASS: Force PRO tier for all users during testing phase
+        // TODO: Remove this bypass before production release
+        if (__DEV__) {
+          setTier(SubscriptionTier.PRO);
+          console.log('🔓 DEV BYPASS: Tier forced to PRO for internal testing');
+        } else {
+          setTier(info.tier);
+        }
       }
     });
 
