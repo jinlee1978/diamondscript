@@ -1,0 +1,34 @@
+# Build artifacts - don't upload to EAS
+*.aab
+*.apk
+
+# Old build files
+diamondscript-*.aab
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Documentation (not needed for builds)
+*.md
+!README.md
+
+# Scripts (not needed for builds)
+scripts/
+DEPLOYMENT.md
+SUBMIT_TO_STORES.md
