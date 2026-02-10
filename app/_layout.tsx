@@ -4,6 +4,7 @@ import { SubscriptionProvider } from '../context/SubscriptionContext';
 import { DrillsProvider } from '../context/DrillsContext';
 import { PracticeProvider } from '../context/PracticeContext';
 import ErrorBoundary from '../components/ErrorBoundary';
+import DeepLinkHandler from '../components/DeepLinkHandler';
 import { initSentry } from '../src/config/sentry';
 
 // Initialize Sentry on app startup
@@ -15,6 +16,7 @@ export default function RootLayout() {
       <SubscriptionProvider>
         <DrillsProvider>
           <PracticeProvider>
+            <DeepLinkHandler />
             <Stack
               screenOptions={{
                 headerStyle: { backgroundColor: '#1B4332' },

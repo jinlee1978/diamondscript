@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, Share } from 'react-native';
-import { Stack } from 'expo-router';
+import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, Share, Alert } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { usePractice, CustomDrill } from '../context/PracticeContext';
 import { Drill, PracticeSession } from '../src/data/types';
 import StationCard from '../components/StationCard';
@@ -8,6 +8,7 @@ import CategoryBadge from '../components/CategoryBadge';
 import UpgradeBanner from '../components/UpgradeBanner';
 import { filterCandidates } from '../src/core/engine/drillSelector';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
+import { generateShareLink } from '../src/utils/practiceSerializer';
 
 // Display-friendly label for the age group enum value
 function formatAgeGroup(raw: string): string {
@@ -69,6 +70,7 @@ function formatSessionForShare(session: PracticeSession): string {
 
 export default function PracticeScreen() {
   const { tier, currentSession, customDrills, addDrillToSession } = usePractice();
+  const router = useRouter();
   const [showAddPicker, setShowAddPicker] = useState(false);
 
   if (!currentSession) {
@@ -112,13 +114,31 @@ export default function PracticeScreen() {
   }, [selectedDrills.length, request.numDrills, request.ageGroup, tier, stationLayout.stations, customDrills]);
 
   const handleShare = async () => {
-    try {
-      await Share.share({
-        title: `DiamondScript — ${formatAgeGroup(request.ageGroup)} Practice`,
-        message: formatSessionForShare(currentSession),
-      });
-    } catch {
-      // User cancelled or share failed
+    // PRO feature: Share interactive deep link
+    if (tier === 'pro') {
+      try {
+        const deepLink = generateShareLink(currentSession);
+        const textPlan = formatSessionForShare(currentSession);
+
+        await Share.share({
+          title: `DiamondScript — ${formatAgeGroup(request.ageGroup)} Practice`,
+          message: `📋 Open this practice in DiamondScript:\n${deepLink}\n\n${textPlan}`,
+        });
+      } catch (error) {
+        if (__DEV__) {
+          console.error('Share failed:', error);
+        }
+      }
+    } else {
+      // Free tier: Share text-only (no deep link)
+      try {
+        await Share.share({
+          title: `DiamondScript — ${formatAgeGroup(request.ageGroup)} Practice`,
+          message: formatSessionForShare(currentSession),
+        });
+      } catch {
+        // User cancelled or share failed
+      }
     }
   };
 
