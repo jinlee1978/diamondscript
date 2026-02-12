@@ -2,11 +2,11 @@ import React, { useState, useMemo, Component, ErrorInfo } from 'react';
 import { View, Text, ScrollView, FlatList, TouchableOpacity, TextInput, StyleSheet, Keyboard, Alert, Share } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
-import { usePractice } from '../context/PracticeContext';
-import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
-import { DrillCategory } from '../src/data/types';
-import CategoryBadge from '../components/CategoryBadge';
-import Toast from '../components/Toast';
+import { usePractice } from '../../context/PracticeContext';
+import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
+import { DrillCategory } from '../../src/data/types';
+import CategoryBadge from '../../components/CategoryBadge';
+import Toast from '../../components/Toast';
 
 // Local Error Boundary: prevents list rendering errors from crashing the entire app
 class LocalErrorBoundary extends Component<

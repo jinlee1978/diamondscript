@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { usePractice } from '../context/PracticeContext';
-import { DrillCategory } from '../src/data/types';
+import { usePractice } from '../../context/PracticeContext';
+import { DrillCategory } from '../../src/data/types';
+
 
 // BUILD 49: Universal Import - supports both Drills and Practices
 interface PendingImport {
