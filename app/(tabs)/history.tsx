@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, SectionList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { usePractice } from '../context/PracticeContext';
 import CategoryBadge from '../components/CategoryBadge';
@@ -36,6 +36,26 @@ export default function HistoryScreen() {
   // Cap at 5 for free tier
   const visibleHistory = tier === 'pro' ? history : history.slice(0, FREE_HISTORY_LIMIT);
 
+  // Group history by date (same calendar day)
+  const sections = useMemo(() => {
+    const groups: { [key: string]: typeof visibleHistory } = {};
+
+    visibleHistory.forEach((item) => {
+      const dateKey = new Date(item.savedAt).toDateString();
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(item);
+    });
+
+    // Convert to SectionList format
+    return Object.entries(groups).map(([dateKey, items]) => ({
+      title: formatDate(items[0].savedAt), // Use first item's timestamp for title
+      date: dateKey,
+      data: items,
+    }));
+  }, [visibleHistory]);
+
   if (visibleHistory.length === 0) {
     return (
       <View style={styles.container}>
@@ -44,11 +64,27 @@ export default function HistoryScreen() {
     );
   }
 
+  const renderSectionHeader = ({ section }: { section: typeof sections[0] }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText}>{section.title}</Text>
+      <Text style={styles.sectionHeaderCount}>
+        {section.data.length} practice{section.data.length !== 1 ? 's' : ''}
+      </Text>
+    </View>
+  );
+
   const renderHistoryItem = ({ item }: { item: typeof visibleHistory[0] }) => {
     const { session, savedAt } = item;
     const categories = CATEGORY_ORDER.filter((cat) =>
       session.selectedDrills.some((d) => d.category === cat)
     );
+
+    // Format time only (since date is in section header)
+    const timeStr = new Date(savedAt).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
 
     return (
       <TouchableOpacity
@@ -60,7 +96,7 @@ export default function HistoryScreen() {
         activeOpacity={0.8}
       >
         <View style={styles.cardHeader}>
-          <Text style={styles.cardDate}>{formatDate(savedAt)}</Text>
+          <Text style={styles.cardTime}>{timeStr}</Text>
           <View style={styles.cardActions}>
             <View onStartShouldSetResponder={() => true}>
               <TouchableOpacity
@@ -113,13 +149,15 @@ export default function HistoryScreen() {
   };
 
   return (
-    <FlatList
+    <SectionList
       style={styles.scroll}
       contentContainerStyle={styles.container}
-      data={visibleHistory}
+      sections={sections}
+      renderSectionHeader={renderSectionHeader}
       renderItem={renderHistoryItem}
       keyExtractor={(item) => item.savedAt.toString()}
       ListFooterComponent={renderFooter}
+      stickySectionHeadersEnabled={false}
       initialNumToRender={10}
       maxToRenderPerBatch={5}
       windowSize={5}
@@ -142,6 +180,27 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 15,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  sectionHeaderText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1B4332',
+  },
+  sectionHeaderCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -161,10 +220,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
-  cardDate: {
-    fontSize: 15,
+  cardTime: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#111827',
+    color: '#6B7280',
   },
   cardActions: {
     flexDirection: 'row',

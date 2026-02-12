@@ -29,6 +29,7 @@ interface PracticeContextValue {
   customDrills: CustomDrill[];
   addCustomDrill: (name: string, description: string, category: DrillCategory, equipment: string[]) => void;
   deleteCustomDrill: (id: string) => void;
+  importDrill: (name: string, description: string, category: DrillCategory, equipment: string[]) => void;
   // From PracticeContext
   lastRequest: PracticeRequest | null;
   currentSession: PracticeSession | null;
@@ -36,9 +37,11 @@ interface PracticeContextValue {
   generateSession: (request: PracticeRequest) => PracticeSession;
   swapDrill: (stationIndex: number, blockIndex: number, newDrill: Drill) => void;
   addDrillToSession: (newDrill: Drill) => void;
+  removeDrillFromSession: (stationIndex: number, blockIndex: number) => void;
   history: HistoryEntry[];
   restoreSession: (session: PracticeSession) => void;
   deletePracticeHistory: (savedAt: number) => void;
+  importPractice: (session: PracticeSession) => void;
 }
 
 const PracticeContext = createContext<PracticeContextValue | null>(null);
@@ -74,7 +77,11 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
             const parsed = JSON.parse(raw);
             // Update tier in loaded request to match current subscription
             setLastRequest({ ...parsed, subscriptionTier: subscription.tier });
-          } catch {
+          } catch (error) {
+            // BUILD 38: Enhanced JSON.parse error logging
+            if (__DEV__) {
+              console.error('PracticeContext: Failed to parse last request:', error);
+            }
             // Corrupted — fall back to default
             setLastRequest(defaultRequest);
           }
@@ -107,9 +114,15 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
         if (!mounted) return;
         if (raw) {
           try {
-            setHistory(JSON.parse(raw));
-          } catch {
+            const parsed = JSON.parse(raw);
+            setHistory(parsed);
+          } catch (error) {
+            // BUILD 38: Enhanced JSON.parse error logging
+            if (__DEV__) {
+              console.error('PracticeContext: Failed to parse history:', error);
+            }
             // Corrupted — start empty
+            setHistory([]);
           }
         }
       })
@@ -177,6 +190,34 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const removeDrillFromSession = useCallback((stationIndex: number, blockIndex: number) => {
+    setCurrentSession((prev) => {
+      if (!prev) return prev;
+
+      // Remove the drill at the specified position
+      const stations = prev.stationLayout.stations.map((station, si) =>
+        si !== stationIndex
+          ? station
+          : {
+              ...station,
+              drills: station.drills.filter((_, bi) => bi !== blockIndex),
+            },
+      );
+
+      // Recompute total: warmup + longest-station wall-clock + cooldown
+      const { transitionTimeMinutes } = prev.stationLayout;
+      const maxStationTime = Math.max(
+        ...stations.map((s) => {
+          const drillTime = s.drills.reduce((sum, b) => sum + b.timeMinutes, 0);
+          return drillTime + Math.max(0, s.drills.length - 1) * transitionTimeMinutes;
+        }),
+      );
+      const totalWallClockMinutes = prev.warmupMinutes + maxStationTime + prev.cooldownMinutes;
+
+      return { ...prev, stationLayout: { ...prev.stationLayout, stations, totalWallClockMinutes } };
+    });
+  }, []);
+
   const restoreSession = useCallback((session: PracticeSession) => {
     setCurrentSession(session);
   }, []);
@@ -184,6 +225,19 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
   const deletePracticeHistory = useCallback((savedAt: number) => {
     setHistory((prev) => {
       const next = prev.filter((entry) => entry.savedAt !== savedAt);
+      AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const importPractice = useCallback((session: PracticeSession) => {
+    // BUILD 51: Import shared practice - save to history and set as current
+    setCurrentSession(session);
+
+    // Save to history
+    const entry: HistoryEntry = { session, savedAt: Date.now() };
+    setHistory((prev) => {
+      const next = [entry, ...prev];
       AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(next));
       return next;
     });
@@ -225,6 +279,7 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
         customDrills: drills.customDrills,
         addCustomDrill: drills.addCustomDrill,
         deleteCustomDrill: drills.deleteCustomDrill,
+        importDrill: drills.importDrill,
         // Practice
         lastRequest,
         currentSession,
@@ -232,9 +287,11 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
         generateSession,
         swapDrill,
         addDrillToSession,
+        removeDrillFromSession,
         history,
         restoreSession,
         deletePracticeHistory,
+        importPractice,
       }}
     >
       {children}

@@ -81,6 +81,14 @@ export default class ErrorBoundary extends Component<Props, State> {
               We're sorry, but something unexpected happened. Please try again.
             </Text>
 
+            {/* BUILD 41: Show actual error message prominently (always visible) */}
+            {this.state.error && (
+              <View style={styles.errorMessageBox}>
+                <Text style={styles.errorMessageTitle}>Error:</Text>
+                <Text style={styles.errorMessageText}>{this.state.error.message || this.state.error.toString()}</Text>
+              </View>
+            )}
+
             {/* Recovery button */}
             <TouchableOpacity
               style={styles.button}
@@ -185,5 +193,30 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#B91C1C',
     fontFamily: 'monospace',
+  },
+  errorMessageBox: {
+    marginTop: 16,
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    width: '100%',
+    maxWidth: 320,
+  },
+  errorMessageTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#991B1B',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  errorMessageText: {
+    fontSize: 14,
+    color: '#DC2626',
+    fontWeight: '500',
+    lineHeight: 20,
   },
 });

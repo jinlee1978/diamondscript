@@ -6,6 +6,7 @@ import { Drill, PracticeSession } from '../src/data/types';
 import StationCard from '../components/StationCard';
 import CategoryBadge from '../components/CategoryBadge';
 import UpgradeBanner from '../components/UpgradeBanner';
+import Toast from '../components/Toast';
 import { filterCandidates } from '../src/core/engine/drillSelector';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
 import { generateShareLink } from '../src/utils/practiceSerializer';
@@ -72,6 +73,8 @@ export default function PracticeScreen() {
   const { tier, currentSession, customDrills, addDrillToSession } = usePractice();
   const router = useRouter();
   const [showAddPicker, setShowAddPicker] = useState(false);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   if (!currentSession) {
     return (
@@ -114,30 +117,70 @@ export default function PracticeScreen() {
   }, [selectedDrills.length, request.numDrills, request.ageGroup, tier, stationLayout.stations, customDrills]);
 
   const handleShare = async () => {
-    // PRO feature: Share interactive deep link
-    if (tier === 'pro') {
-      try {
-        const deepLink = generateShareLink(currentSession);
-        const textPlan = formatSessionForShare(currentSession);
+    // BUILD 51: Fail-safe practice sharing - never let button "die"
+    try {
+      // BUILD 49: Universal Magic Import format for practices
+      const practiceData = {
+        type: 'practice',
+        ageGroup: formatAgeGroup(request.ageGroup),
+        totalMinutes: stationLayout.totalWallClockMinutes,
+        stationCount: stationLayout.stations.length,
+        warmupMinutes,
+        cooldownMinutes,
+        // Include full session for future import capability
+        session: currentSession,
+      };
+
+      const textPlan = formatSessionForShare(currentSession);
+      const magicPayload = `{DIAMONDSCRIPT_DATA:${JSON.stringify(practiceData)}}`;
+
+      // PRO feature: Share interactive deep link + Magic Import
+      if (tier === 'pro') {
+        let deepLink: string | null = null;
+
+        // Try to generate deep link, but don't let it kill the share
+        try {
+          deepLink = generateShareLink(currentSession);
+        } catch (linkError) {
+          if (__DEV__) {
+            console.warn('Deep link generation failed, falling back to text-only:', linkError);
+          }
+        }
+
+        const message = deepLink
+          ? `📋 Open this practice in DiamondScript:\n${deepLink}\n\n${textPlan}\n\n${magicPayload}`
+          : `${textPlan}\n\nCopy this message to import the practice plan!\n\n${magicPayload}`;
 
         await Share.share({
           title: `DiamondScript — ${formatAgeGroup(request.ageGroup)} Practice`,
-          message: `📋 Open this practice in DiamondScript:\n${deepLink}\n\n${textPlan}`,
+          message,
+        }).catch(() => {
+          // Silently ignore all errors (including user cancellation)
+          // No alerts or toasts - let the native share sheet handle UX
         });
-      } catch (error) {
-        if (__DEV__) {
-          console.error('Share failed:', error);
-        }
-      }
-    } else {
-      // Free tier: Share text-only (no deep link)
-      try {
+      } else {
+        // Free tier: Share text + Magic Import (no deep link)
         await Share.share({
           title: `DiamondScript — ${formatAgeGroup(request.ageGroup)} Practice`,
-          message: formatSessionForShare(currentSession),
+          message: `${textPlan}\n\nCopy this message to import the practice plan!\n\n${magicPayload}`,
+        }).catch(() => {
+          // Silently ignore all errors (including user cancellation)
+          // No alerts or toasts - let the native share sheet handle UX
         });
+      }
+    } catch (error) {
+      // BUILD 51: Ultimate fail-safe - if everything else fails, share minimal text
+      if (__DEV__) {
+        console.error('Practice share failed completely, using emergency fallback:', error);
+      }
+
+      try {
+        await Share.share({
+          title: 'DiamondScript Practice',
+          message: `DiamondScript Practice Plan\n\nAge Group: ${formatAgeGroup(request.ageGroup)}\nDuration: ${stationLayout.totalWallClockMinutes} minutes\nStations: ${stationLayout.stations.length}\n\nGenerated with DiamondScript`,
+        }).catch(() => {});
       } catch {
-        // User cancelled or share failed
+        // Absolute last resort - do nothing rather than crash
       }
     }
   };
@@ -264,6 +307,11 @@ export default function PracticeScreen() {
         </TouchableOpacity>
       </Modal>
     )}
+    <Toast
+      message={toastMessage}
+      visible={toastVisible}
+      onHide={() => setToastVisible(false)}
+    />
     </>
   );
 }

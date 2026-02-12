@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, Share } from 'react-native';
 import { DrillBlock, Drill } from '../src/data/types';
 import { usePractice, CustomDrill } from '../context/PracticeContext';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
@@ -28,11 +28,54 @@ function customToDrill(c: CustomDrill): Drill {
   };
 }
 
-export default function DrillCard({ block, stationIndex, blockIndex, isLast, transitionMinutes }: Props) {
-  const { starredDrills, toggleStar, customDrills, swapDrill } = usePractice();
+const DrillCard = React.memo(function DrillCard({ block, stationIndex, blockIndex, isLast, transitionMinutes }: Props) {
+  // BUILD 44: ALL hooks BEFORE conditional returns (React Rules of Hooks - Build 42 maintained)
+  const { starredDrills, toggleStar, customDrills, swapDrill, removeDrillFromSession } = usePractice();
+  const [showPicker, setShowPicker] = useState(false);
+
+  // BUILD 49: Universal Share handler with type flag (Unified Sharing Ecosystem)
+  const handleShare = useCallback(async () => {
+    if (!block?.drill) return;
+
+    try {
+      // BUILD 49: Add type flag for Universal Import detection
+      const drillData = {
+        type: 'drill',
+        name: block.drill.name,
+        description: block.drill.description,
+        category: block.drill.category,
+        equipment: block.drill.equipment || [],
+      };
+
+      const shareMessage = `Check out this baseball drill from DiamondScript:\n\n${block.drill.name}\n\n${block.drill.description}${
+        block.drill.equipment && block.drill.equipment.length > 0
+          ? `\n\nEquipment: ${block.drill.equipment.join(', ')}`
+          : ''
+      }\n\nCopy this message to import it into your app!\n\n{DIAMONDSCRIPT_DATA:${JSON.stringify(drillData)}}`;
+
+      await Share.share({
+        message: shareMessage,
+      });
+    } catch (error) {
+      // Share cancelled or failed - silent fail (user knows what happened)
+      if (__DEV__) {
+        console.log('Share cancelled or failed:', error);
+      }
+    }
+  }, [block]);
+
+  // BUILD 41: Total protection - catch-all null guard (AFTER hooks)
+  if (!block?.drill) {
+    return <View />;
+  }
+
+  // Defensive null guard: prevent crash if drill data is incomplete during re-render
+  if (!block.drill.id || !block.drill.name) {
+    return <View />;
+  }
+
   const isStarred = starredDrills.has(block.drill.id);
   const totalReps = block.reps + block.bonusReps;
-  const [showPicker, setShowPicker] = useState(false);
 
   const replacementDrills: Drill[] = [
     ...SEED_DRILL_CATALOG.filter((d) => starredDrills.has(d.id) && d.id !== block.drill.id),
@@ -50,6 +93,18 @@ export default function DrillCard({ block, stationIndex, blockIndex, isLast, tra
         <View style={styles.header}>
           <Text style={styles.name}>{block.drill.name}</Text>
           <View style={styles.headerRight}>
+            <TouchableOpacity
+              onPress={() => removeDrillFromSession(stationIndex, blockIndex)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.deleteIcon}>{'\u00D7'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleShare}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.shareIcon}>{'\u2197'}</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => toggleStar(block.drill.id)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -153,7 +208,9 @@ export default function DrillCard({ block, stationIndex, blockIndex, isLast, tra
       </Modal>}
     </View>
   );
-}
+});
+
+export default DrillCard;
 
 const styles = StyleSheet.create({
   card: {
@@ -184,6 +241,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  deleteIcon: {
+    fontSize: 22,
+    color: '#EF4444',
+    fontWeight: '700',
+  },
+  shareIcon: {
+    fontSize: 18,
+    color: '#3B82F6',
   },
   star: {
     fontSize: 18,
