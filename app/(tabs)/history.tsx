@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, SectionList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { usePractice } from '../context/PracticeContext';
+import { usePractice } from '../../context/PracticeContext';
 import CategoryBadge from '../components/CategoryBadge';
 import { DrillCategory } from '../src/data/types';
 
