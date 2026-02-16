@@ -1,3 +1,15 @@
+/**
+ * @deprecated BUILD 60 - This context has been merged into PracticeContext.
+ *
+ * As of Build 60, subscription management is handled directly in PracticeContext
+ * to support RevenueCat real-time entitlement updates. This file is kept for
+ * reference only and is no longer used in the app.
+ *
+ * Migration:
+ * - Old: `const { tier, upgradeToPro } = useSubscription()`
+ * - New: `const { tier, upgradeToPro } = usePractice()`
+ */
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { SubscriptionTier } from '../src/subscription/tiers';
 import { getSubscriptionInfo, initiateUpgrade, restorePurchases } from '../src/subscription/service';

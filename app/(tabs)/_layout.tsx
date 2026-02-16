@@ -1,27 +1,34 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export default function TabLayout() {
+function TabsContent() {
+  // BUILD 60: DYNAMIC HARDWARE AWARENESS
+  // This hook queries the device OS for the exact notch/home-bar dimensions
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Apply dynamic top inset to prevent hardware overlap
+        headerStatusBarHeight: insets.top,
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
           borderTopColor: '#E5E7EB',
-          height: Platform.OS === 'ios' ? 88 : 64,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-          paddingTop: 8,
+          // Dynamic height based on device hardware
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom,
+          paddingTop: 10,
           elevation: 8,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.1,
           shadowRadius: 8,
         },
-        tabBarActiveTintColor: '#3B82F6', // DiamondScript Blue
+        tabBarActiveTintColor: '#1B4332', // Forest Green
         tabBarInactiveTintColor: '#9CA3AF',
         tabBarLabelStyle: {
           fontSize: 11,
@@ -43,9 +50,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="starred"
+        name="drills"
         options={{
-          title: 'My Drills',
+          title: 'Drill Library',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="star" size={size} color={color} />
           ),
@@ -60,6 +67,25 @@ export default function TabLayout() {
           ),
         }}
       />
+      {/* BUILD 68: Coaching Staff tab */}
+      <Tabs.Screen
+        name="coaching"
+        options={{
+          title: 'Staff',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="people" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="ai"
+        options={{
+          title: 'AI Lab',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="sparkles" size={size} color={color} />
+          ),
+        }}
+      />
       <Tabs.Screen
         name="history"
         options={{
@@ -70,5 +96,13 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+  );
+}
+
+export default function TabLayout() {
+  return (
+    <SafeAreaProvider>
+      <TabsContent />
+    </SafeAreaProvider>
   );
 }

@@ -10,7 +10,7 @@ Code that touches these domains references these definitions — never hardcodes
 | Tier | Price    | Drill Catalog   | Custom Intensity | Station Splitting | Practice History |
 |------|----------|-----------------|------------------|-------------------|------------------|
 | Free | $0       | Top 30 only     | Locked at 3      | No (sequential)   | Last 5           |
-| Pro  | $7.99/mo | Full catalog    | Yes (1–5)        | Yes               | Unlimited        |
+| Pro  | $9.99/mo | Full catalog    | Yes (1–5)        | Yes               | Unlimited        |
 
 Feature gating is in `src/subscription/featureGate.ts`.
 The engine itself is tier-unaware. Tier constraints are applied at the request boundary BEFORE the engine is invoked.

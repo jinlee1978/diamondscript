@@ -1,15 +1,35 @@
-import React, { useState, useMemo } from 'react';
+/**
+ * BUILD 80: Practice Management Suite
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * FLAT TIMELINE ARCHITECTURE:
+ * - All drills in timeline.drills[] array (no station silos)
+ * - Coach assignments via getCoachDisplayName (Name First rule)
+ * - reorderDrillInTimeline moves drills across coach boundaries
+ *
+ * BUILD 80: Removed Export/PDF functionality for stability
+ * - Clean Share text with no "Station" terminology
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, Share, Alert } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePractice, CustomDrill } from '../context/PracticeContext';
-import { Drill, PracticeSession } from '../src/data/types';
-import StationCard from '../components/StationCard';
+import { Drill, PracticeSession, DrillBlock } from '../src/data/types';
+import DrillCard from '../components/DrillCard';
 import CategoryBadge from '../components/CategoryBadge';
 import UpgradeBanner from '../components/UpgradeBanner';
 import Toast from '../components/Toast';
 import { filterCandidates } from '../src/core/engine/drillSelector';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
 import { generateShareLink } from '../src/utils/practiceSerializer';
+// BUILD 68: Coach assignment imports
+import { loadCoachingStaff } from '../src/data/storage/coachingStorage';
+import { CoachingStaff, getCoachColor } from '../src/data/types/coach';
+import { ensureTimelineWithSync } from '../src/data/storage/practiceSessionStorage';
+import { autoAssignDrillsToStaff, countUnassignedDrills, getCoachDisplayName } from '../src/logic/coachMatcher';
 
 // Display-friendly label for the age group enum value
 function formatAgeGroup(raw: string): string {
@@ -31,37 +51,81 @@ function customToDrill(c: CustomDrill): Drill {
   };
 }
 
+/**
+ * BUILD 73: Format session for Share - NO "Station" terminology
+ * Uses coach names and flat timeline structure
+ */
 function formatSessionForShare(session: PracticeSession): string {
-  const { warmupMinutes, cooldownMinutes, stationLayout, request } = session;
+  const { warmupMinutes, cooldownMinutes, stationLayout, request, coachNames, timeline } = session;
   const ageLabel = formatAgeGroup(request.ageGroup);
-  const COACH_LABELS = ['Head Coach', 'Assistant 1', 'Assistant 2', 'Assistant 3'];
+  // BUILD 73: Coach labels only, no "Station" verbiage
+  const DEFAULT_COACH_LABELS = ['Head Coach', 'Assistant 1', 'Assistant 2', 'Assistant 3'];
 
   const lines: string[] = [
     '\u2014 DiamondScript Practice \u2014',
     `${ageLabel} \u00B7 ${stationLayout.totalWallClockMinutes} min`,
     '',
-    `Warm-Up: ${warmupMinutes} min`,
+    `Warm Up: ${warmupMinutes} min`,
     'Stretch, light jog, arm circles',
     '',
   ];
 
-  stationLayout.stations.forEach((station, i) => {
-    const coachLabel = COACH_LABELS[station.coachIndex] ?? `Coach ${station.coachIndex + 1}`;
-    lines.push(`Station ${i + 1} \u2014 ${coachLabel}`);
-    station.drills.forEach((block, di) => {
-      const totalReps = block.reps + block.bonusReps;
-      lines.push(`  \u2022 ${block.drill.name} \u2014 ${totalReps} reps \u00B7 ${block.timeMinutes.toFixed(1)} min`);
-      if (block.drill.equipment && block.drill.equipment.length > 0) {
-        lines.push(`    Equipment: ${block.drill.equipment.join(', ')}`);
+  // BUILD 73: Use timeline for proper coach grouping
+  if (timeline?.drills && timeline.drills.length > 0) {
+    // Group drills by coach for share output
+    const coachDrillMap = new Map<string, typeof timeline.drills>();
+    for (const drill of timeline.drills) {
+      const coachId = drill.assignedCoachId || 'head-coach-default';
+      if (!coachDrillMap.has(coachId)) {
+        coachDrillMap.set(coachId, []);
       }
-      if (di < station.drills.length - 1) {
-        lines.push(`  \u2193 ${stationLayout.transitionTimeMinutes} min transition`);
-      }
-    });
-    lines.push('');
-  });
+      coachDrillMap.get(coachId)!.push(drill);
+    }
 
-  lines.push(`Cool-Down: ${cooldownMinutes} min`);
+    let coachIndex = 0;
+    for (const [_coachId, drills] of coachDrillMap) {
+      // Determine coach label from coachNames or defaults
+      const coachLabel = coachNames?.[coachIndex] ||
+        DEFAULT_COACH_LABELS[coachIndex] ||
+        `Coach ${coachIndex + 1}`;
+
+      lines.push(coachLabel);
+      drills.forEach((block, di) => {
+        const totalReps = block.reps + block.bonusReps;
+        lines.push(`  \u2022 ${block.drill.name} \u2014 ${totalReps} reps \u00B7 ${block.timeMinutes.toFixed(1)} min`);
+        if (block.drill.equipment && block.drill.equipment.length > 0) {
+          lines.push(`    Equipment: ${block.drill.equipment.join(', ')}`);
+        }
+        if (di < drills.length - 1) {
+          lines.push(`  \u2193 ${stationLayout.transitionTimeMinutes} min transition`);
+        }
+      });
+      lines.push('');
+      coachIndex++;
+    }
+  } else {
+    // Fallback to station-based output (legacy sessions)
+    stationLayout.stations.forEach((station) => {
+      const coachLabel = coachNames?.[station.coachIndex] ||
+        DEFAULT_COACH_LABELS[station.coachIndex] ||
+        `Coach ${station.coachIndex + 1}`;
+
+      lines.push(coachLabel);
+      station.drills.forEach((block, di) => {
+        const totalReps = block.reps + block.bonusReps;
+        lines.push(`  \u2022 ${block.drill.name} \u2014 ${totalReps} reps \u00B7 ${block.timeMinutes.toFixed(1)} min`);
+        if (block.drill.equipment && block.drill.equipment.length > 0) {
+          lines.push(`    Equipment: ${block.drill.equipment.join(', ')}`);
+        }
+        if (di < station.drills.length - 1) {
+          lines.push(`  \u2193 ${stationLayout.transitionTimeMinutes} min transition`);
+        }
+      });
+      lines.push('');
+    });
+  }
+
+  lines.push(`Cool Down: ${cooldownMinutes} min`);
   lines.push('Cool stretches, hydrate, recap');
   lines.push('');
   lines.push(`Total: ${stationLayout.totalWallClockMinutes} min`);
@@ -69,16 +133,124 @@ function formatSessionForShare(session: PracticeSession): string {
   return lines.join('\n');
 }
 
+// BUILD 73: Group drills by coach for visual rendering while preserving timeline order
+interface CoachGroup {
+  coachId: string;
+  coachName: string;
+  coachColors: { bg: string; border: string; text: string } | null;
+  drills: { block: DrillBlock; timelineIndex: number }[];
+}
+
+function groupDrillsByCoach(
+  drills: DrillBlock[],
+  staff: CoachingStaff | null,
+  coachNames?: string[]
+): CoachGroup[] {
+  const groups: CoachGroup[] = [];
+  const coachMap = new Map<string, CoachGroup>();
+
+  drills.forEach((block, timelineIndex) => {
+    const coachId = block.assignedCoachId || 'head-coach-default';
+
+    if (!coachMap.has(coachId)) {
+      // Determine coach display name using Name First rule
+      let coachName = 'Head Coach';
+      if (staff) {
+        coachName = getCoachDisplayName(coachId, staff, block.drill.category);
+      } else if (coachNames) {
+        // Fallback to legacy coachNames array
+        const coachIndex = coachId === 'head-coach-default' ? 0 :
+          parseInt(coachId.replace('assistant-placeholder-', ''), 10);
+        if (!isNaN(coachIndex) && coachNames[coachIndex]) {
+          coachName = coachNames[coachIndex];
+        }
+      }
+
+      const group: CoachGroup = {
+        coachId,
+        coachName,
+        coachColors: getCoachColor(coachId),
+        drills: [],
+      };
+      coachMap.set(coachId, group);
+      groups.push(group);
+    }
+
+    coachMap.get(coachId)!.drills.push({ block, timelineIndex });
+  });
+
+  return groups;
+}
+
 export default function PracticeScreen() {
-  const { tier, currentSession, customDrills, addDrillToSession } = usePractice();
-  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const {
+    tier,
+    currentSession,
+    customDrills,
+    addDrillToSession,
+    resetToEngineOrder,
+    updateCurrentSession,
+    reorderDrillInTimeline,
+  } = usePractice();
   const [showAddPicker, setShowAddPicker] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [hasInitializedCoaches, setHasInitializedCoaches] = useState(false);
+  const [staff, setStaff] = useState<CoachingStaff | null>(null);
+
+  // BUILD 68: Auto-assignment on session load
+  useEffect(() => {
+    if (!currentSession || hasInitializedCoaches) return;
+
+    const initializeCoachAssignments = async () => {
+      try {
+        const loadedStaff = await loadCoachingStaff();
+        setStaff(loadedStaff);
+
+        const migratedSession = await ensureTimelineWithSync(currentSession);
+
+        if (migratedSession.timeline && countUnassignedDrills(migratedSession.timeline.drills) > 0) {
+          const assignedDrills = autoAssignDrillsToStaff(
+            migratedSession.timeline.drills,
+            loadedStaff
+          );
+
+          const updatedSession: PracticeSession = {
+            ...migratedSession,
+            timeline: {
+              ...migratedSession.timeline,
+              drills: assignedDrills,
+            },
+          };
+
+          updateCurrentSession(updatedSession);
+        }
+
+        setHasInitializedCoaches(true);
+      } catch (error) {
+        console.error('BUILD 73: Coach assignment initialization failed:', error);
+        setHasInitializedCoaches(true);
+      }
+    };
+
+    initializeCoachAssignments();
+  }, [currentSession, hasInitializedCoaches, updateCurrentSession]);
+
+  // Reset initialization flag when session changes
+  useEffect(() => {
+    setHasInitializedCoaches(false);
+  }, [currentSession?.request?.ageGroup]);
+
+  // Load staff on mount for display purposes
+  useEffect(() => {
+    loadCoachingStaff().then(setStaff);
+  }, []);
 
   if (!currentSession) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <Text style={styles.empty}>No practice generated yet. Go back and tap Go.</Text>
       </View>
     );
@@ -86,21 +258,29 @@ export default function PracticeScreen() {
 
   const { warmupMinutes, cooldownMinutes, stationLayout, request, selectedDrills } = currentSession;
 
+  // BUILD 73: Use timeline.drills as source of truth, fallback to stationLayout
+  const timelineDrills = currentSession.timeline?.drills ||
+    stationLayout.stations.flatMap((s, si) =>
+      s.drills.map((d, di) => ({
+        ...d,
+        assignedCoachId: si === 0 ? 'head-coach-default' : `assistant-placeholder-${si}`,
+        order: si * 100 + di
+      }))
+    );
+
+  // Group drills by coach for visual rendering
+  const coachGroups = groupDrillsByCoach(timelineDrills, staff, currentSession.coachNames);
+
   // Memoize expensive drill filtering calculations
   const { hasShortfall, upgradeHelps, canAddDrill, addableDrills } = useMemo(() => {
-    // Did the engine return fewer drills than requested?
     const shortfall = selectedDrills.length < request.numDrills;
-    // Would upgrading to Pro unlock more drills for this age group?
     const proPoolSize = shortfall
       ? filterCandidates(SEED_DRILL_CATALOG, request.ageGroup, 'pro').length
       : 0;
     const helps = shortfall && proPoolSize > selectedDrills.length;
 
-    // Add-drill: free on T-Ball, Pro required for 8U–14U
     const canAdd = tier === 'pro' || request.ageGroup === 'T_BALL';
-    const sessionDrillIds = new Set(
-      stationLayout.stations.flatMap((s) => s.drills.map((b) => b.drill.id)),
-    );
+    const sessionDrillIds = new Set(timelineDrills.map((b) => b.drill.id));
     const drills: Drill[] = canAdd
       ? [
           ...filterCandidates(SEED_DRILL_CATALOG, request.ageGroup, tier).filter((d) => !sessionDrillIds.has(d.id)),
@@ -114,89 +294,102 @@ export default function PracticeScreen() {
       canAddDrill: canAdd,
       addableDrills: drills,
     };
-  }, [selectedDrills.length, request.numDrills, request.ageGroup, tier, stationLayout.stations, customDrills]);
+  }, [selectedDrills.length, request.numDrills, request.ageGroup, tier, timelineDrills, customDrills]);
 
   const handleShare = async () => {
-    // BUILD 51: Fail-safe practice sharing - never let button "die"
     try {
-      // BUILD 49: Universal Magic Import format for practices
       const practiceData = {
         type: 'practice',
         ageGroup: formatAgeGroup(request.ageGroup),
         totalMinutes: stationLayout.totalWallClockMinutes,
-        stationCount: stationLayout.stations.length,
+        coachCount: coachGroups.length, // BUILD 73: Use coach count instead of station count
         warmupMinutes,
         cooldownMinutes,
-        // Include full session for future import capability
         session: currentSession,
       };
 
       const textPlan = formatSessionForShare(currentSession);
       const magicPayload = `{DIAMONDSCRIPT_DATA:${JSON.stringify(practiceData)}}`;
 
-      // PRO feature: Share interactive deep link + Magic Import
       if (tier === 'pro') {
         let deepLink: string | null = null;
-
-        // Try to generate deep link, but don't let it kill the share
         try {
           deepLink = generateShareLink(currentSession);
         } catch (linkError) {
-          if (__DEV__) {
-            console.warn('Deep link generation failed, falling back to text-only:', linkError);
-          }
+          console.warn('Deep link generation failed:', linkError);
         }
 
         const message = deepLink
-          ? `📋 Open this practice in DiamondScript:\n${deepLink}\n\n${textPlan}\n\n${magicPayload}`
+          ? `Open this practice in DiamondScript:\n${deepLink}\n\n${textPlan}\n\n${magicPayload}`
           : `${textPlan}\n\nCopy this message to import the practice plan!\n\n${magicPayload}`;
 
         await Share.share({
-          title: `DiamondScript — ${formatAgeGroup(request.ageGroup)} Practice`,
+          title: `DiamondScript \u2014 ${formatAgeGroup(request.ageGroup)} Practice`,
           message,
-        }).catch(() => {
-          // Silently ignore all errors (including user cancellation)
-          // No alerts or toasts - let the native share sheet handle UX
-        });
+        }).catch(() => {});
       } else {
-        // Free tier: Share text + Magic Import (no deep link)
         await Share.share({
-          title: `DiamondScript — ${formatAgeGroup(request.ageGroup)} Practice`,
+          title: `DiamondScript \u2014 ${formatAgeGroup(request.ageGroup)} Practice`,
           message: `${textPlan}\n\nCopy this message to import the practice plan!\n\n${magicPayload}`,
-        }).catch(() => {
-          // Silently ignore all errors (including user cancellation)
-          // No alerts or toasts - let the native share sheet handle UX
-        });
+        }).catch(() => {});
       }
     } catch (error) {
-      // BUILD 51: Ultimate fail-safe - if everything else fails, share minimal text
-      if (__DEV__) {
-        console.error('Practice share failed completely, using emergency fallback:', error);
-      }
-
+      console.error('Practice share failed:', error);
       try {
         await Share.share({
           title: 'DiamondScript Practice',
-          message: `DiamondScript Practice Plan\n\nAge Group: ${formatAgeGroup(request.ageGroup)}\nDuration: ${stationLayout.totalWallClockMinutes} minutes\nStations: ${stationLayout.stations.length}\n\nGenerated with DiamondScript`,
+          message: `DiamondScript Practice Plan\n\nAge Group: ${formatAgeGroup(request.ageGroup)}\nDuration: ${stationLayout.totalWallClockMinutes} minutes`,
         }).catch(() => {});
       } catch {
-        // Absolute last resort - do nothing rather than crash
+        // Absolute last resort - do nothing
       }
     }
   };
+
+  const handleResetToRecommended = () => {
+    Alert.alert(
+      'Reset to Recommended Order?',
+      'This will restore the AI generated drill order. Current changes will be lost.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            resetToEngineOrder();
+            setToastMessage('Drill order reset to recommended');
+            setToastVisible(true);
+            setIsEditMode(false);
+          },
+        },
+      ]
+    );
+  };
+
+  const isPro = tier === 'pro';
+  const canEditOrder = isPro && timelineDrills.length > 1;
 
   return (
     <>
     <Stack.Screen
       options={{
         headerRight: ({ tintColor }) => (
-          <TouchableOpacity onPress={handleShare} style={{ paddingRight: 16 }}>
-            <Text style={{ color: tintColor, fontSize: 15, fontWeight: '500' }}>Share</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 16, paddingRight: 16 }}>
+            {canEditOrder && (
+              <TouchableOpacity onPress={() => setIsEditMode(!isEditMode)}>
+                <Text style={{ color: tintColor, fontSize: 15, fontWeight: '500' }}>
+                  {isEditMode ? 'Done' : 'Edit Order'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={handleShare}>
+              <Text style={{ color: tintColor, fontSize: 15, fontWeight: '500' }}>Share</Text>
+            </TouchableOpacity>
+          </View>
         ),
       }}
     />
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
+    <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       {/* Header summary */}
       <View style={styles.summary}>
         <Text style={styles.summaryAge}>{formatAgeGroup(request.ageGroup)}</Text>
@@ -212,34 +405,76 @@ export default function PracticeScreen() {
       {hasShortfall && !upgradeHelps && (
         <View style={styles.capNote}>
           <Text style={styles.capNoteText}>
-            Only {selectedDrills.length} drills available for {formatAgeGroup(request.ageGroup)} — try requesting {selectedDrills.length} or fewer.
+            Only {selectedDrills.length} drills available for {formatAgeGroup(request.ageGroup)} \u2014 try requesting {selectedDrills.length} or fewer.
           </Text>
         </View>
       )}
 
       {/* Warmup block */}
       <View style={styles.bookendCard}>
-        <Text style={styles.bookendLabel}>Warm-Up</Text>
+        <Text style={styles.bookendLabel}>Warm Up</Text>
         <Text style={styles.bookendDuration}>{warmupMinutes} min</Text>
         <Text style={styles.bookendNote}>Stretch, light jog, arm circles</Text>
       </View>
 
-      {/* Station cards */}
-      {stationLayout.stations.map((station, i) => (
-        <StationCard
-          key={station.coachIndex}
-          station={station}
-          stationIndex={i}
-          transitionMinutes={stationLayout.transitionTimeMinutes}
-        />
+      {/* BUILD 73: FLAT TIMELINE RENDERING - Drills grouped by coach but arrows cross boundaries */}
+      {coachGroups.map((group, groupIndex) => (
+        <View key={group.coachId} style={styles.coachSection}>
+          {/* Coach Header */}
+          <View style={[
+            styles.coachHeader,
+            group.coachColors && { backgroundColor: group.coachColors.bg, borderColor: group.coachColors.border }
+          ]}>
+            <Text style={[
+              styles.coachHeaderText,
+              group.coachColors && { color: group.coachColors.text }
+            ]}>
+              {group.coachName}
+            </Text>
+            <Text style={styles.coachDrillCount}>
+              {group.drills.length} drill{group.drills.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
+
+          {/* Drills under this coach */}
+          {group.drills.map(({ block, timelineIndex }, drillIndexInGroup) => {
+            // BUILD 73: isFirst/isLast based on GLOBAL timeline position
+            const isFirstInTimeline = timelineIndex === 0;
+            const isLastInTimeline = timelineIndex === timelineDrills.length - 1;
+
+            return (
+              <View key={block.id || `drill-${timelineIndex}`}>
+                <DrillCard
+                  block={block}
+                  stationIndex={groupIndex}
+                  blockIndex={drillIndexInGroup}
+                  isFirst={isFirstInTimeline}
+                  isLast={isLastInTimeline}
+                  transitionMinutes={stationLayout.transitionTimeMinutes}
+                  isEditMode={isEditMode}
+                  timelineIndex={timelineIndex}
+                  onMoveUp={() => reorderDrillInTimeline(timelineIndex, 'up')}
+                  onMoveDown={() => reorderDrillInTimeline(timelineIndex, 'down')}
+                />
+              </View>
+            );
+          })}
+        </View>
       ))}
 
+      {/* Reset to Recommended button (shown in edit mode) */}
+      {isEditMode && canEditOrder && (
+        <TouchableOpacity style={styles.resetButton} onPress={handleResetToRecommended}>
+          <Text style={styles.resetButtonText}>Reset to Recommended Order</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Add-drill button / upgrade nudge */}
-      {canAddDrill && addableDrills.length > 0 ? (
+      {!isEditMode && canAddDrill && addableDrills.length > 0 ? (
         <TouchableOpacity style={styles.addDrillButton} onPress={() => setShowAddPicker(true)}>
           <Text style={styles.addDrillButtonText}>+ Add Drill</Text>
         </TouchableOpacity>
-      ) : !canAddDrill && (
+      ) : !isEditMode && !canAddDrill && (
         <View style={styles.addDrillNudge}>
           <UpgradeBanner feature="adding drills to a practice" />
         </View>
@@ -247,7 +482,7 @@ export default function PracticeScreen() {
 
       {/* Cooldown block */}
       <View style={styles.bookendCard}>
-        <Text style={styles.bookendLabel}>Cool-Down</Text>
+        <Text style={styles.bookendLabel}>Cool Down</Text>
         <Text style={styles.bookendDuration}>{cooldownMinutes} min</Text>
         <Text style={styles.bookendNote}>Cool stretches, hydrate, recap</Text>
       </View>
@@ -257,16 +492,16 @@ export default function PracticeScreen() {
         <Text style={styles.footerText}>
           Total practice: <Text style={styles.footerBold}>{stationLayout.totalWallClockMinutes} minutes</Text>
         </Text>
-        {stationLayout.stations.length > 1 && (
+        {coachGroups.length > 1 && (
           <Text style={styles.footerSub}>
-            {stationLayout.stations.length} parallel stations running simultaneously
+            {coachGroups.length} coaches assigned
           </Text>
         )}
       </View>
 
     </ScrollView>
 
-    {/* Add-drill picker bottom sheet — rendered outside ScrollView to avoid key-collision warnings */}
+    {/* Add-drill picker bottom sheet */}
     {showAddPicker && (
       <Modal visible transparent animationType="slide">
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setShowAddPicker(false)}>
@@ -319,7 +554,7 @@ export default function PracticeScreen() {
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F8FAFC',
   },
   container: {
     padding: 20,
@@ -393,6 +628,33 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
+  // BUILD 73: Coach section styles
+  coachSection: {
+    marginBottom: 16,
+  },
+  coachHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 2,
+    marginBottom: 12,
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  coachHeaderText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  coachDrillCount: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+
   // Footer
   footer: {
     marginTop: 8,
@@ -417,7 +679,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-  // Catalog-cap note (shown when Pro wouldn't help either)
+  // Catalog-cap note
   capNote: {
     backgroundColor: '#F3F4F6',
     borderRadius: 12,
@@ -433,7 +695,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── Add-drill button / nudge ──
+  // Add-drill button / nudge
   addDrillNudge: {
     marginBottom: 16,
   },
@@ -457,7 +719,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ── Add-drill picker bottom sheet ──
+  // Reset to Recommended button
+  resetButton: {
+    borderWidth: 1,
+    borderColor: '#9CA3AF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 16,
+    backgroundColor: '#F9FAFB',
+  },
+  resetButtonText: {
+    color: '#6B7280',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+
+  // Add-drill picker bottom sheet
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',

@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
+// BUILD 86: CRITICAL FIX - Use real RevenueCat SDK (was importing stub!)
+import { getOfferings } from '../src/subscription/service';
 import { usePractice } from '../context/PracticeContext';
 
 const PRO_FEATURES = [
@@ -13,10 +15,32 @@ const PRO_FEATURES = [
 export default function UpgradeScreen() {
   const router = useRouter();
   const { upgradeToPro, restorePurchases: handleRestore } = usePractice();
-  const [isProcessing, setIsProcessing] = useState(false);
+
+  // BUILD 60: QA Defect 2 Fix - Separate button locks
+  const [isBuying, setIsBuying] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  // BUILD 60: QA Defect 2 Fix - Dynamic pricing from RevenueCat
+  const [price, setPrice] = useState<string>('$9.99');
+
+  // BUILD 86: Fetch dynamic price from RevenueCat offerings
+  useEffect(() => {
+    getOfferings()
+      .then((offering) => {
+        // Find the monthly subscription package
+        const pkg = offering?.monthly ||
+          offering?.availablePackages.find((p) => p.packageType === 'MONTHLY');
+        if (pkg) {
+          setPrice(pkg.product.priceString);
+        }
+      })
+      .catch(() => {
+        // Keep default price if fetch fails
+      });
+  }, []);
 
   const handleSubscribe = async () => {
-    setIsProcessing(true);
+    setIsBuying(true);
     try {
       const success = await upgradeToPro();
       if (success) {
@@ -25,26 +49,22 @@ export default function UpgradeScreen() {
           'You now have access to all Pro features. Enjoy!',
           [{ text: 'Get Started', onPress: () => router.back() }],
         );
-      } else {
-        Alert.alert(
-          'Payment Integration Required',
-          'In-app purchase integration is in development. This would normally trigger the payment flow.',
-          [{ text: 'OK' }],
-        );
       }
+      // If success is false, user cancelled - no alert needed
     } catch (error) {
+      // BUILD 60: QA Defect 1 Fix - Show actual error
       Alert.alert(
-        'Error',
-        'Something went wrong. Please try again later.',
+        'Purchase Failed',
+        error instanceof Error ? error.message : 'Something went wrong. Please try again later.',
         [{ text: 'OK' }],
       );
     } finally {
-      setIsProcessing(false);
+      setIsBuying(false);
     }
   };
 
   const handleRestorePurchases = async () => {
-    setIsProcessing(true);
+    setIsRestoring(true);
     try {
       const success = await handleRestore();
       if (success) {
@@ -60,8 +80,15 @@ export default function UpgradeScreen() {
           [{ text: 'OK' }],
         );
       }
+    } catch (error) {
+      // BUILD 60: QA Fix - Handle restore errors
+      Alert.alert(
+        'Restore Failed',
+        error instanceof Error ? error.message : 'Unable to restore purchases. Please try again.',
+        [{ text: 'OK' }],
+      );
     } finally {
-      setIsProcessing(false);
+      setIsRestoring(false);
     }
   };
 
@@ -83,7 +110,7 @@ export default function UpgradeScreen() {
       <View style={styles.header}>
         <Text style={styles.headerBadge}>PRO</Text>
         <Text style={styles.headerTitle}>Unlock DiamondScript Pro</Text>
-        <Text style={styles.headerPrice}>$9.99 <Text style={styles.headerPeriod}>one-time</Text></Text>
+        <Text style={styles.headerPrice}>{price}<Text style={styles.headerPeriod}>/month</Text></Text>
       </View>
 
       {/* Feature list */}
@@ -101,28 +128,30 @@ export default function UpgradeScreen() {
 
       {/* CTA */}
       <TouchableOpacity
-        style={[styles.ctaButton, isProcessing && styles.ctaButtonDisabled]}
+        style={[styles.ctaButton, (isBuying || isRestoring) && styles.ctaButtonDisabled]}
         onPress={handleSubscribe}
-        disabled={isProcessing}
+        disabled={isBuying || isRestoring}
         activeOpacity={0.85}
       >
         <Text style={styles.ctaText}>
-          {isProcessing ? 'Processing...' : 'Buy Pro — $9.99'}
+          {isBuying ? 'Processing...' : `Subscribe — ${price}/mo`}
         </Text>
       </TouchableOpacity>
 
       <Text style={styles.disclaimer}>
-        One-time purchase. Lifetime access.
+        Cancel anytime. Managed via Google Play.
       </Text>
 
       {/* Restore purchases button */}
       <TouchableOpacity
         style={styles.restoreButton}
         onPress={handleRestorePurchases}
-        disabled={isProcessing}
+        disabled={isBuying || isRestoring}
         activeOpacity={0.7}
       >
-        <Text style={styles.restoreText}>Restore Purchases</Text>
+        <Text style={[styles.restoreText, (isBuying || isRestoring) && { opacity: 0.5 }]}>
+          {isRestoring ? 'Restoring...' : 'Restore Purchases'}
+        </Text>
       </TouchableOpacity>
 
       {/* Privacy Policy link */}

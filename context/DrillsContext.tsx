@@ -1,6 +1,20 @@
+/**
+ * BUILD 72: DrillsContext - Drill Catalog & Starring State
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * FEATURES:
+ * - toggleStarWithDrill(): Auto-persists AI-generated drills to customDrills
+ * - isDrillPersisted(): Fast lookup to check if drill exists in catalog
+ * - isAiGenerated flag: Marks drills auto-saved from AI sessions
+ *
+ * STORAGE: AsyncStorage with fire-and-forget writes for performance
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DrillCategory } from '../src/data/types';
+import { DrillCategory, Drill } from '../src/data/types';
+import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
 
 // Generate cryptographically strong random ID (React Native compatible)
 function generateUniqueId(): string {
@@ -10,7 +24,7 @@ function generateUniqueId(): string {
 const STARRED_KEY = '@diamondscript/starredDrills';
 const CUSTOM_DRILLS_KEY = '@diamondscript/customDrills';
 const BUILD_VERSION_KEY = '@diamondscript/buildVersion';
-const CURRENT_BUILD = 56;
+const CURRENT_BUILD = 72;
 
 export interface CustomDrill {
   id: string;
@@ -20,18 +34,27 @@ export interface CustomDrill {
   equipment: string[];
   createdAt: number;
   isImported?: boolean;
+  /** BUILD 70: Marks drills auto-saved from AI sessions */
+  isAiGenerated?: boolean;
 }
 
 interface DrillsContextValue {
   starredDrills: Set<string>;
   toggleStar: (drillId: string) => void;
+  /** BUILD 70: Star with drill data - auto-saves AI-generated drills */
+  toggleStarWithDrill: (drill: Drill) => void;
   customDrills: CustomDrill[];
   addCustomDrill: (name: string, description: string, category: DrillCategory, equipment: string[]) => void;
   deleteCustomDrill: (id: string) => void;
   importDrill: (name: string, description: string, category: DrillCategory, equipment: string[]) => void;
+  /** BUILD 70: Check if a drill needs to be persisted (not in seed catalog) */
+  isDrillPersisted: (drillId: string) => boolean;
 }
 
 const DrillsContext = createContext<DrillsContextValue | null>(null);
+
+// BUILD 70: Create a Set of seed drill IDs for fast lookup
+const SEED_DRILL_IDS = new Set(SEED_DRILL_CATALOG.map(d => d.id));
 
 export function DrillsProvider({ children }: { children: React.ReactNode }) {
   const [starredDrills, setStarredDrills] = useState<Set<string>>(new Set());
@@ -44,7 +67,7 @@ export function DrillsProvider({ children }: { children: React.ReactNode }) {
         const lastBuild = version ? parseInt(version, 10) : 0;
 
         if (lastBuild < CURRENT_BUILD) {
-          // First time running Build 38 - clear all drill data
+          // First time running Build 70 - clear all drill data
           if (__DEV__) {
             console.log(`DrillsContext: Upgrading from build ${lastBuild} to ${CURRENT_BUILD} - clearing drill data`);
           }
@@ -120,6 +143,14 @@ export function DrillsProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // BUILD 70: Check if a drill is persisted (in seed catalog or custom drills)
+  const isDrillPersisted = useCallback((drillId: string): boolean => {
+    // Check seed catalog
+    if (SEED_DRILL_IDS.has(drillId)) return true;
+    // Check custom drills
+    return customDrills.some(d => d.id === drillId);
+  }, [customDrills]);
+
   const toggleStar = useCallback((drillId: string) => {
     setStarredDrills((prev) => {
       const next = new Set(prev);
@@ -137,6 +168,49 @@ export function DrillsProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+
+  // BUILD 70: Star with drill data - auto-saves AI-generated drills to customDrills
+  const toggleStarWithDrill = useCallback((drill: Drill) => {
+    // Check if already starred - if so, just unstar
+    if (starredDrills.has(drill.id)) {
+      toggleStar(drill.id);
+      return;
+    }
+
+    // Check if drill needs to be persisted (not in seed catalog or custom drills)
+    const inSeedCatalog = SEED_DRILL_IDS.has(drill.id);
+    const inCustomDrills = customDrills.some(d => d.id === drill.id);
+
+    if (!inSeedCatalog && !inCustomDrills) {
+      // Auto-save AI-generated drill to customDrills
+      const aiDrill: CustomDrill = {
+        id: drill.id,
+        name: drill.name,
+        description: drill.description,
+        category: drill.category,
+        equipment: drill.equipment || [],
+        createdAt: Date.now(),
+        isAiGenerated: true,
+      };
+
+      setCustomDrills((prev) => {
+        const next = [...prev, aiDrill];
+        try {
+          AsyncStorage.setItem(CUSTOM_DRILLS_KEY, JSON.stringify(next)).catch(() => {});
+        } catch {
+          // JSON.stringify failed - ignore silently
+        }
+        return next;
+      });
+
+      if (__DEV__) {
+        console.log(`BUILD 70: Auto-saved AI drill "${drill.name}" to custom drills`);
+      }
+    }
+
+    // Now toggle the star
+    toggleStar(drill.id);
+  }, [starredDrills, customDrills, toggleStar]);
 
   const addCustomDrill = useCallback((name: string, description: string, category: DrillCategory, equipment: string[]) => {
     setCustomDrills((prev) => {
@@ -191,10 +265,12 @@ export function DrillsProvider({ children }: { children: React.ReactNode }) {
       value={{
         starredDrills,
         toggleStar,
+        toggleStarWithDrill,
         customDrills,
         addCustomDrill,
         deleteCustomDrill,
         importDrill,
+        isDrillPersisted,
       }}
     >
       {children}

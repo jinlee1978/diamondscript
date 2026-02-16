@@ -1,9 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { usePractice } from '../../context/PracticeContext';
 import { DrillCategory } from '../../src/data/types';
+import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
+import { getSubscriptionInfo } from '../../src/subscription/service';
+
+// BUILD 69: Consistent age group formatting helper
+function formatAgeGroup(raw: string): string {
+  return raw.replace('AGE_', '').replace('_', '-').replace('T-BALL', 'T-Ball');
+}
 
 
 // BUILD 49: Universal Import - supports both Drills and Practices
@@ -25,11 +33,26 @@ interface PendingImport {
 export default function HomeScreen() {
   // BUILD 47: ALL hooks at absolute top (React Rules of Hooks)
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { tier, currentSession, isLoading, starredDrills, customDrills, history, importDrill, importPractice } = usePractice();
 
   // BUILD 47: Magic Import state (visual card instead of Alert)
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [promptedDrills, setPromptedDrills] = useState<Set<string>>(new Set());
+
+  // BUILD 85: Double-Lock - Re-validate tier every time HomeScreen is viewed
+  // This ensures UI snaps back to truth even if state variable is "stuck"
+  useFocusEffect(
+    useCallback(() => {
+      getSubscriptionInfo()
+        .then((info) => {
+          console.log('[HomeScreen Focus] Tier validated:', info.tier);
+        })
+        .catch(() => {
+          // Silent - PracticeContext handles the hard gate
+        });
+    }, [])
+  );
 
   // BUILD 49: Universal Magic Import - detects both Drills and Practices
   const checkClipboard = React.useCallback(async (isManualTrigger = false) => {
@@ -192,7 +215,7 @@ export default function HomeScreen() {
           ),
         }}
       />
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         {/* BUILD 51: Import Card - ALWAYS visible, even during loading */}
         {/* BUILD 49: Universal Import Card - supports both Drills and Practices */}
         {pendingImport && (
@@ -317,23 +340,30 @@ export default function HomeScreen() {
             <Text style={styles.ctaText}>Generate Practice</Text>
           </TouchableOpacity>
 
-          {/* My Drills shortcut */}
-      <TouchableOpacity
-        style={styles.myDrillsCard}
-        onPress={() => router.push('/starred')}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.myDrillsIcon}>{'\u2605'}</Text>
-        <View style={styles.myDrillsInfo}>
-          <Text style={styles.myDrillsLabel}>My Drills</Text>
-          <Text style={styles.myDrillsSub}>
-            {starredDrills.size + customDrills.length === 0
-              ? 'Star drills during practice to save them'
-              : `${starredDrills.size + customDrills.length} drill${starredDrills.size + customDrills.length !== 1 ? 's' : ''} saved`}
-          </Text>
-        </View>
-        <Text style={styles.myDrillsChevron}>{'\u203A'}</Text>
-      </TouchableOpacity>
+          {/* Saved Drills shortcut - BUILD 68: Unified count matching drills.tsx */}
+          {(() => {
+            // Same calculation as drills.tsx: starred app drills + custom drills
+            const starredAppDrills = SEED_DRILL_CATALOG.filter(d => starredDrills.has(d.id));
+            const totalDrills = starredAppDrills.length + customDrills.length;
+            return (
+              <TouchableOpacity
+                style={styles.myDrillsCard}
+                onPress={() => router.push('/drills')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.myDrillsIcon}>{'\u2605'}</Text>
+                <View style={styles.myDrillsInfo}>
+                  <Text style={styles.myDrillsLabel}>Drill Library</Text>
+                  <Text style={styles.myDrillsSub}>
+                    {totalDrills === 0
+                      ? 'Star drills during practice to save them'
+                      : `${totalDrills} drill${totalDrills !== 1 ? 's' : ''} saved`}
+                  </Text>
+                </View>
+                <Text style={styles.myDrillsChevron}>{'\u203A'}</Text>
+              </TouchableOpacity>
+            );
+          })()}
 
       {/* Practice History shortcut */}
       {history.length > 0 && (
@@ -363,7 +393,7 @@ export default function HomeScreen() {
           <Text style={styles.lastLabel}>Last Practice</Text>
           <View style={styles.lastMeta}>
             <Text style={styles.lastMeta1}>
-              {currentSession.request.ageGroup.replace('AGE_', '').replace('_', '-').replace('T-BALL', 'T-Ball')}
+              {formatAgeGroup(currentSession.request.ageGroup)}
             </Text>
             <Text style={styles.lastMetaDot}>&#8226;</Text>
             <Text style={styles.lastMeta1}>
@@ -385,7 +415,7 @@ export default function HomeScreen() {
               activeOpacity={0.7}
             >
               <Text style={styles.upgradeNudgeText}>
-                &#9733; Unlock full power with <Text style={styles.upgradeNudgeBold}>Pro — $7.99/mo</Text>
+                &#9733; Unlock full power with <Text style={styles.upgradeNudgeBold}>Pro — $9.99/mo</Text>
               </Text>
             </TouchableOpacity>
           )}
@@ -399,7 +429,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F8FAFC',
     padding: 24,
   },
   loading: {

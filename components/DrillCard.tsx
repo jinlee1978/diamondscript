@@ -1,16 +1,38 @@
-import React, { useState, useCallback } from 'react';
+/**
+ * BUILD 71: DrillCard - Interactive Drill Display with Coach Assignment
+ * ═══════════════════════════════════════════════════════════════════════════════
+ *
+ * INTERACTIVE COACH BADGE:
+ * - Tappable badge opens coach picker modal
+ * - Shows "Assign Coach" CTA when unassigned (amber styling)
+ * - Selection calls manuallyAssignDrillToCoach() → sets assignmentSource: 'manual'
+ *
+ * MANUAL LOCKDOWN: Once assigned manually, auto-assignment never overrides
+ * ═══════════════════════════════════════════════════════════════════════════════
+ */
+
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, Share } from 'react-native';
 import { DrillBlock, Drill } from '../src/data/types';
 import { usePractice, CustomDrill } from '../context/PracticeContext';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
 import CategoryBadge from './CategoryBadge';
+import { CoachingStaff, getCoachColor, Coach } from '../src/data/types/coach';
+import { loadCoachingStaff } from '../src/data/storage/coachingStorage';
+import { getCoachDisplayName } from '../src/logic/coachMatcher';
 
 interface Props {
   block: DrillBlock;
   stationIndex: number;
   blockIndex: number;
   isLast: boolean;
+  isFirst: boolean;
   transitionMinutes: number;
+  isEditMode?: boolean;
+  /** BUILD 70: Timeline index for manuallyAssignDrillToCoach */
+  timelineIndex?: number;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }
 
 function customToDrill(c: CustomDrill): Drill {
@@ -28,12 +50,38 @@ function customToDrill(c: CustomDrill): Drill {
   };
 }
 
-const DrillCard = React.memo(function DrillCard({ block, stationIndex, blockIndex, isLast, transitionMinutes }: Props) {
-  // BUILD 44: ALL hooks BEFORE conditional returns (React Rules of Hooks - Build 42 maintained)
-  const { starredDrills, toggleStar, customDrills, swapDrill, removeDrillFromSession } = usePractice();
+const DrillCard = React.memo(function DrillCard({
+  block,
+  stationIndex,
+  blockIndex,
+  isLast,
+  isFirst,
+  transitionMinutes,
+  isEditMode = false,
+  timelineIndex,
+  onMoveUp,
+  onMoveDown
+}: Props) {
+  // BUILD 70: ALL hooks BEFORE conditional returns (React Rules of Hooks)
+  const {
+    starredDrills,
+    toggleStarWithDrill,
+    customDrills,
+    swapDrill,
+    removeDrillFromSession,
+    manuallyAssignDrillToCoach, // BUILD 70: Manual coach assignment
+  } = usePractice();
   const [showPicker, setShowPicker] = useState(false);
+  const [showCoachPicker, setShowCoachPicker] = useState(false); // BUILD 70: Coach picker modal
 
-  // BUILD 49: Universal Share handler with type flag (Unified Sharing Ecosystem)
+  // BUILD 68: Coaching staff state for coach badges
+  const [staff, setStaff] = useState<CoachingStaff | null>(null);
+
+  useEffect(() => {
+    loadCoachingStaff().then(setStaff);
+  }, []);
+
+  // BUILD 70: Universal Share handler with type flag (Unified Sharing Ecosystem)
   const handleShare = useCallback(async () => {
     if (!block?.drill) return;
 
@@ -64,6 +112,14 @@ const DrillCard = React.memo(function DrillCard({ block, stationIndex, blockInde
     }
   }, [block]);
 
+  // BUILD 70: Handle coach selection from picker
+  const handleSelectCoach = useCallback((coach: Coach) => {
+    // Use timelineIndex if available, otherwise fall back to blockIndex
+    const drillIdx = timelineIndex ?? blockIndex;
+    manuallyAssignDrillToCoach(drillIdx, coach.id);
+    setShowCoachPicker(false);
+  }, [timelineIndex, blockIndex, manuallyAssignDrillToCoach]);
+
   // BUILD 41: Total protection - catch-all null guard (AFTER hooks)
   if (!block?.drill) {
     return <View />;
@@ -87,12 +143,44 @@ const DrillCard = React.memo(function DrillCard({ block, stationIndex, blockInde
     setShowPicker(false);
   };
 
-  return (
-    <View>
-      <View style={styles.card}>
-        <View style={styles.header}>
-          <Text style={styles.name}>{block.drill.name}</Text>
-          <View style={styles.headerRight}>
+  // BUILD 70: Get coach display info
+  const coachId = block.assignedCoachId;
+  const coachColors = coachId ? getCoachColor(coachId) : null;
+  const coachDisplayName = staff && coachId
+    ? getCoachDisplayName(coachId, staff, block.drill.category)
+    : null;
+
+  // BUILD 70: Get available coaches for picker
+  const availableCoaches = staff?.coaches.filter(c => c.role === 'head' || c.isActive) || [];
+
+  const cardContent = (
+    <>
+      <View style={styles.header}>
+        <Text style={styles.name}>{block.drill.name}</Text>
+        <View style={styles.headerRight}>
+            {/* Reorder arrows - only show in edit mode */}
+            {isEditMode && (
+              <View style={styles.arrowButtons}>
+                {!isFirst && onMoveUp && (
+                  <TouchableOpacity
+                    onPress={onMoveUp}
+                    style={styles.arrowButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.arrowIcon}>{'▲'}</Text>
+                  </TouchableOpacity>
+                )}
+                {!isLast && onMoveDown && (
+                  <TouchableOpacity
+                    onPress={onMoveDown}
+                    style={styles.arrowButton}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.arrowIcon}>{'▼'}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
             <TouchableOpacity
               onPress={() => removeDrillFromSession(stationIndex, blockIndex)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -106,7 +194,7 @@ const DrillCard = React.memo(function DrillCard({ block, stationIndex, blockInde
               <Text style={styles.shareIcon}>{'\u2197'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => toggleStar(block.drill.id)}
+              onPress={() => toggleStarWithDrill(block.drill)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Text style={[styles.star, isStarred && styles.starActive]}>
@@ -116,6 +204,26 @@ const DrillCard = React.memo(function DrillCard({ block, stationIndex, blockInde
             <CategoryBadge category={block.drill.category} />
           </View>
         </View>
+
+        {/* BUILD 70: INTERACTIVE Coach Badge - TouchableOpacity, NOT static Text */}
+        <TouchableOpacity
+          style={[
+            styles.coachBadge,
+            coachColors
+              ? { backgroundColor: coachColors.bg, borderColor: coachColors.border }
+              : styles.coachBadgeUnassigned
+          ]}
+          onPress={() => setShowCoachPicker(true)}
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+        >
+          <Text style={[
+            styles.coachBadgeText,
+            coachColors ? { color: coachColors.text } : styles.coachBadgeTextUnassigned
+          ]}>
+            {coachDisplayName || 'Assign Coach'}
+          </Text>
+          <Text style={styles.coachBadgeChevron}>{'▼'}</Text>
+        </TouchableOpacity>
 
         <Text style={styles.description}>{block.drill.description}</Text>
 
@@ -156,11 +264,18 @@ const DrillCard = React.memo(function DrillCard({ block, stationIndex, blockInde
           )}
         </View>
 
-        {replacementDrills.length > 0 && (
-          <TouchableOpacity style={styles.swapTrigger} onPress={() => setShowPicker(true)}>
-            <Text style={styles.swapTriggerText}>Swap drill</Text>
-          </TouchableOpacity>
-        )}
+      {replacementDrills.length > 0 && (
+        <TouchableOpacity style={styles.swapTrigger} onPress={() => setShowPicker(true)}>
+          <Text style={styles.swapTriggerText}>Swap drill</Text>
+        </TouchableOpacity>
+      )}
+    </>
+  );
+
+  return (
+    <View>
+      <View style={styles.card}>
+        {cardContent}
       </View>
 
       {/* Transition arrow between drills */}
@@ -206,6 +321,68 @@ const DrillCard = React.memo(function DrillCard({ block, stationIndex, blockInde
           </View>
         </TouchableOpacity>
       </Modal>}
+
+      {/* BUILD 70: Coach Picker Modal */}
+      {showCoachPicker && (
+        <Modal visible transparent animationType="slide">
+          <TouchableOpacity
+            style={styles.backdrop}
+            activeOpacity={1}
+            onPress={() => setShowCoachPicker(false)}
+          >
+            <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
+              <View style={styles.pickerHandle} />
+              <View style={styles.pickerHeader}>
+                <Text style={styles.pickerTitle}>Assign Coach</Text>
+                <TouchableOpacity onPress={() => setShowCoachPicker(false)}>
+                  <Text style={styles.pickerClose}>{'\u00D7'}</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.pickerList}>
+                {availableCoaches.map((coach) => {
+                  const colors = getCoachColor(coach.id);
+                  const isSelected = coach.id === coachId;
+                  return (
+                    <TouchableOpacity
+                      key={coach.id}
+                      style={[styles.coachPickerRow, isSelected && styles.coachPickerRowSelected]}
+                      onPress={() => handleSelectCoach(coach)}
+                    >
+                      <View style={[
+                        styles.coachPickerBadge,
+                        colors && { backgroundColor: colors.bg, borderColor: colors.border }
+                      ]}>
+                        <Text style={[
+                          styles.coachPickerBadgeText,
+                          colors && { color: colors.text }
+                        ]}>
+                          {coach.role === 'head' ? 'HC' : `A${coach.placeholderIndex || ''}`}
+                        </Text>
+                      </View>
+                      <View style={styles.coachPickerInfo}>
+                        <Text style={styles.coachPickerName}>{coach.name}</Text>
+                        {coach.specialties.length > 0 && (
+                          <Text style={styles.coachPickerSpecialties}>
+                            {coach.specialties.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')}
+                          </Text>
+                        )}
+                      </View>
+                      {isSelected && (
+                        <Text style={styles.coachPickerCheck}>{'✓'}</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.coachPickerHint}>
+                <Text style={styles.coachPickerHintText}>
+                  Manual assignments are locked and won't be changed by auto-assignment
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </View>
   );
 });
@@ -242,6 +419,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  arrowButtons: {
+    flexDirection: 'column',
+    gap: 2,
+    marginRight: 4,
+  },
+  arrowButton: {
+    paddingHorizontal: 4,
+  },
+  arrowIcon: {
+    fontSize: 14,
+    color: '#1B4332',
+    fontWeight: '700',
+  },
   deleteIcon: {
     fontSize: 22,
     color: '#EF4444',
@@ -257,6 +447,35 @@ const styles = StyleSheet.create({
   },
   starActive: {
     color: '#D4AF37',
+  },
+  // BUILD 70: Interactive coach badge styles
+  coachBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+    gap: 4,
+  },
+  coachBadgeUnassigned: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+  },
+  coachBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  coachBadgeTextUnassigned: {
+    color: '#B45309',
+  },
+  coachBadgeChevron: {
+    fontSize: 8,
+    color: '#6B7280',
+    marginLeft: 2,
   },
   description: {
     fontSize: 13,
@@ -416,5 +635,65 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#059669',
+  },
+
+  // BUILD 70: Coach picker styles
+  coachPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  coachPickerRowSelected: {
+    backgroundColor: '#F0FDF4',
+  },
+  coachPickerBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  coachPickerBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  coachPickerInfo: {
+    flex: 1,
+  },
+  coachPickerName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  coachPickerSpecialties: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  coachPickerCheck: {
+    fontSize: 18,
+    color: '#16A34A',
+    fontWeight: '700',
+  },
+  coachPickerHint: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    backgroundColor: '#FFFBEB',
+  },
+  coachPickerHintText: {
+    fontSize: 11,
+    color: '#92400E',
+    textAlign: 'center',
+    lineHeight: 15,
   },
 });

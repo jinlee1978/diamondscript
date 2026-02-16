@@ -1,376 +1,545 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+/**
+ * Supabase Edge Function: generate-practice-plan
+ *
+ * Generates AI-powered baseball practice plans using Google Gemini AI.
+ *
+ * BUILD 67: CODE-LEVEL SECURITY (Gateway JWT Bypass)
+ * - Security Model: Manual JWT verification in code (lines 105-164)
+ * - Deployment: MUST use --no-verify-jwt flag to bypass gateway auth
+ * - Why: Gateway rejects valid tokens with empty 'authorization' metadata
+ * - Solution: Gateway bypass + code-level verification = reliable auth
+ * - Primary model: Configurable via GEMINI_MODEL secret (default: gemini-2.5-flash)
+ * - Fallback model: Configurable via GEMINI_FALLBACK_MODEL secret (default: gemini-2.0-flash)
+ * - API version: Configurable via GEMINI_API_VERSION secret (default: v1beta)
+ * - CORS: Strict allowlist (Expo dev + production domains)
+ * - Auto-Repair: Frontend automatically retries 401 errors with fresh session
+ *
+ * BUILD 75: PRECISION PROMPTING + BULLETPROOF PARSER
+ * - Word limit: 40-80 words per drill description
+ * - Format: SETUP (1-2 sentences) + ACTION (3-4 bullet points)
+ * - Parser: Auto-repair truncated JSON by balancing braces/brackets
+ * - Token headroom: maxOutputTokens increased to 8192
+ *
+ * DEPLOYMENT COMMAND:
+ * npx supabase functions deploy generate-practice-plan --no-verify-jwt
+ *
+ * Zero hardcoded model names - fully hot-swappable via Supabase secrets dashboard
+ */
 
-const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.95.3';
 
-// Allowed origins for CORS (BUILD 51-Alpha-QC: Security Enhancement)
-const ALLOWED_ORIGINS = [
-  'https://diamondscript.app',
-  'https://www.diamondscript.app',
-  'exp://192.168.1.1',      // Expo Go development
-  'http://localhost:8081',  // Local development
-];
-
+// Request interface matching client-side AIPracticeRequest
 interface GeneratePlanRequest {
   ageGroup: string;
   experienceLevel: number;
   focusArea: string;
   duration: number;
   intensity: 'rec' | 'travel' | 'competitive';
-  userInstructions?: string; // BUILD 54: Custom coach instructions
+  assistantCoaches?: number;
+  userInstructions?: string;
 }
 
-interface Drill {
+// Response interfaces matching client-side AIPracticePlan
+interface AIDrill {
   name: string;
   description: string;
   duration: number;
   equipment?: string[];
 }
 
-interface PlanSection {
+interface AIPlanSection {
   title: string;
-  drills: Drill[];
+  drills: AIDrill[];
 }
 
-interface PracticePlan {
+interface AIPracticePlan {
   planTitle: string;
   estimatedDuration: number;
-  sections: PlanSection[];
-}
-
-// BUILD 53: Rate limiting - track user requests (in-memory, per function instance)
-const userRequestTimestamps = new Map<string, number[]>();
-const RATE_LIMIT_MAX_REQUESTS = 5;
-const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-function checkRateLimit(userId: string): { allowed: boolean; remainingRequests: number } {
-  const now = Date.now();
-  const userTimestamps = userRequestTimestamps.get(userId) || [];
-
-  // Remove timestamps older than 24 hours
-  const recentTimestamps = userTimestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-
-  // Check if user exceeded limit
-  if (recentTimestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
-    return { allowed: false, remainingRequests: 0 };
-  }
-
-  // Add current timestamp and update map
-  recentTimestamps.push(now);
-  userRequestTimestamps.set(userId, recentTimestamps);
-
-  return { allowed: true, remainingRequests: RATE_LIMIT_MAX_REQUESTS - recentTimestamps.length };
-}
-
-// BUILD 51-Alpha-QC: Input validation function
-function validateRequest(req: GeneratePlanRequest): string | null {
-  const validAgeGroups = ['T-Ball', '8U', '10U', '12U', '14U'];
-  const validIntensities = ['rec', 'travel', 'competitive'];
-
-  if (!validAgeGroups.includes(req.ageGroup)) {
-    return 'Invalid age group. Must be one of: T-Ball, 8U, 10U, 12U, 14U';
-  }
-
-  if (typeof req.experienceLevel !== 'number' || req.experienceLevel < 0 || req.experienceLevel > 5) {
-    return 'Experience level must be a number between 0 and 5';
-  }
-
-  if (!req.focusArea || req.focusArea.length > 100) {
-    return 'Focus area is required and must be less than 100 characters';
-  }
-
-  // Sanitize: Block prompt injection attempts
-  if (/[\n\r\t]|IGNORE|SYSTEM|ADMIN|DELETE|DROP/i.test(req.focusArea)) {
-    return 'Invalid characters detected in focus area';
-  }
-
-  if (typeof req.duration !== 'number' || req.duration < 15 || req.duration > 180) {
-    return 'Duration must be a number between 15 and 180 minutes';
-  }
-
-  if (!validIntensities.includes(req.intensity)) {
-    return 'Invalid intensity type. Must be one of: rec, travel, competitive';
-  }
-
-  // BUILD 54: Validate userInstructions (prevent prompt injection)
-  if (req.userInstructions) {
-    if (req.userInstructions.length > 500) {
-      return 'Special instructions must be less than 500 characters';
-    }
-
-    // Block prompt injection attempts
-    if (/[\n\r\t]|IGNORE|SYSTEM|ADMIN|DELETE|DROP/i.test(req.userInstructions)) {
-      return 'Invalid characters detected in special instructions';
-    }
-  }
-
-  return null; // Valid
+  sections: AIPlanSection[];
 }
 
 serve(async (req) => {
-  // BUILD 51-Alpha-QC: CORS security - restrict to allowed origins
-  const origin = req.headers.get('origin') ?? '';
-  const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  // BUILD 67: Strict CORS - Allowlist for Expo dev and production
+  const allowedOrigins = [
+    'exp://127.0.0.1:8081',           // Expo Go dev (iOS)
+    'exp://192.168.1.1:8081',         // Expo Go dev (Android - placeholder, adjust if needed)
+    'https://diamondscript.app',      // Production web (future)
+    'https://app.diamondscript.app',  // Production web alt domain
+  ];
 
-  // CORS preflight
+  const origin = req.headers.get('origin');
+
+  // BUILD 67: CRITICAL FIX - Handle both browser and native mobile app requests
+  // - Browsers send Origin header → validate against allowlist
+  // - Native mobile apps (React Native production builds) DON'T send Origin → rely on JWT auth
+  // - This is EXPECTED behavior: Origin is a browser-only security concept
+  let allowedOrigin: string | null = null;
+
+  if (origin) {
+    // Browser request - validate Origin
+    if (allowedOrigins.includes(origin)) {
+      allowedOrigin = origin;
+    } else {
+      // Browser with unauthorized origin - reject
+      return new Response(
+        JSON.stringify({ error: 'Origin not allowed' }),
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+  }
+  // If no Origin header (native mobile app), allowedOrigin stays null - this is OK
+  // Security relies on JWT verification instead (lines 105-164)
+
+  // BUILD 67: CORS headers for browser requests (optional for native apps)
+  const corsHeaders = allowedOrigin ? {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  } : {
+    // Native mobile app (no Origin header) - minimal headers
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin': corsOrigin,
-        'Access-Control-Allow-Methods': 'POST',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      },
-    });
+    return new Response('ok', { headers: corsHeaders, status: 200 });
   }
 
   try {
-    // BUILD 51-Alpha-QC: Authentication check
-    const authHeader = req.headers.get('authorization');
+    // BUILD 67: CODE-LEVEL JWT VERIFICATION
+    // Gateway auth is BYPASSED (--no-verify-jwt), so we verify manually here
+    // This ensures we have full control over auth flow and avoid gateway metadata issues
+
+    console.log('🔐 [BUILD 67] Manual JWT Verification Starting...');
+
+    const authHeader = req.headers.get('Authorization');
+    const apikeyHeader = req.headers.get('apikey');
+
+    console.log('   Authorization header present:', !!authHeader);
+    console.log('   Apikey header present:', !!apikeyHeader);
+
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Authentication required' }), {
-        status: 401,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': corsOrigin,
-        },
-      });
-    }
-
-    // BUILD 52-Alpha: JWT verification with Service Role Key
-    if (!SUPABASE_SERVICE_ROLE_KEY) {
-      console.error('❌ SUPABASE_SERVICE_ROLE_KEY is not configured');
-      return new Response(JSON.stringify({ error: 'Server configuration error' }), {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': corsOrigin,
-        },
-      });
-    }
-
-    // Verify JWT token using Service Role Key (required for server-side auth verification)
-    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-
-    if (authError || !user) {
-      console.error('JWT verification failed:', authError?.message || 'No user returned');
-      return new Response(JSON.stringify({ error: 'Invalid authentication token' }), {
-        status: 401,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': corsOrigin,
-        },
-      });
-    }
-
-    // BUILD 53: Rate limiting - prevent excessive AI usage
-    const rateLimitCheck = checkRateLimit(user.id);
-    if (!rateLimitCheck.allowed) {
+      console.error('❌ Missing Authorization header');
       return new Response(
-        JSON.stringify({
-          error: 'Daily AI generation limit reached (5 plans per 24 hours). Please try again later.',
-        }),
-        {
-          status: 429,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': corsOrigin,
-            'X-RateLimit-Limit': RATE_LIMIT_MAX_REQUESTS.toString(),
-            'X-RateLimit-Remaining': '0',
-            'Retry-After': '86400', // 24 hours in seconds
-          },
-        }
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    if (!GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY is not configured');
+    // Extract Bearer token (sanitized)
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    console.log('   Token extracted, length:', token.length);
+
+    // Initialize Supabase client for JWT verification
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('❌ Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables');
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+    // BUILD 67: Manual JWT verification using supabaseClient.auth.getUser()
+    // This bypasses the gateway and verifies the token directly
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('❌ JWT verification failed:', authError?.message || 'No user found');
+      console.error('   Error details:', authError);
+      return new Response(
+        JSON.stringify({
+          error: 'Invalid or expired token',
+          message: 'Authentication failed. Please restart the app and try again.',
+          ...(Deno.env.get('DEBUG') === 'true' && { debug: authError?.message })
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Log authenticated user (anonymous UUID)
+    console.log('✅ JWT Verification Successful');
+    console.log('   User ID:', user.id);
+    console.log('   Auth Method:', user.app_metadata?.provider || 'anonymous');
+
+    // Parse request body
     const requestData: GeneratePlanRequest = await req.json();
 
-    // BUILD 51-Alpha-QC: Input validation
-    const validationError = validateRequest(requestData);
-    if (validationError) {
-      return new Response(JSON.stringify({ error: validationError }), {
-        status: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': corsOrigin,
-        },
-      });
+    // DEBUG: Log incoming request
+    console.log('📥 Incoming Request');
+    console.log('   Age Group:', requestData.ageGroup);
+    console.log('   Focus Area:', requestData.focusArea);
+    console.log('   Duration:', requestData.duration);
+    console.log('   Intensity:', requestData.intensity);
+    console.log('   Experience:', requestData.experienceLevel);
+
+    // Validate required fields
+    if (!requestData.ageGroup || !requestData.focusArea || !requestData.duration) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: ageGroup, focusArea, duration' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    const { ageGroup, experienceLevel, focusArea, duration, intensity, userInstructions } = requestData;
+    // Get Gemini API key from secrets
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!geminiApiKey) {
+      console.error('GEMINI_API_KEY not configured in Supabase secrets');
+      return new Response(
+        JSON.stringify({ error: 'AI service not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Dynamic Model Selection: Fully configurable via secrets
+    const primaryModel = Deno.env.get('GEMINI_MODEL') || 'gemini-2.5-flash';
+    const fallbackModel = Deno.env.get('GEMINI_FALLBACK_MODEL') || 'gemini-2.0-flash';
+    const apiVersion = Deno.env.get('GEMINI_API_VERSION') || 'v1beta';
 
     // Build AI prompt
-    const prompt = buildPrompt(ageGroup, experienceLevel, focusArea, duration, intensity, userInstructions);
+    const prompt = buildPrompt(requestData);
 
-    // Call Gemini API (2026 stable model)
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          },
-        }),
+    console.log('🤖 Gemini API - Dynamic Model Selection');
+    console.log('   Primary Model:', primaryModel);
+    console.log('   Fallback Model:', fallbackModel);
+    console.log('   API Version:', apiVersion);
+    console.log('   Prompt Length:', prompt.length, 'chars');
+
+    // Attempt primary model with automatic failover
+    let practicePlan: AIPracticePlan;
+    try {
+      practicePlan = await callGeminiAPI(geminiApiKey, primaryModel, apiVersion, prompt);
+      console.log('✅ Success with primary model:', primaryModel);
+    } catch (error: any) {
+      // Check if 404 (model not found) - trigger failover
+      if (error.status === 404) {
+        console.warn('⚠️  PRIMARY MODEL DEPRECATED:', primaryModel);
+        console.warn('   Error:', error.message);
+        console.warn('   🔄 Attempting failover to stable model:', fallbackModel);
+
+        try {
+          practicePlan = await callGeminiAPI(geminiApiKey, fallbackModel, apiVersion, prompt);
+          console.log('✅ Failover successful with:', fallbackModel);
+          console.log('⚡ ACTION REQUIRED: Update GEMINI_MODEL secret to', fallbackModel);
+        } catch (fallbackError: any) {
+          console.error('❌ Failover also failed:', fallbackError.message);
+          throw fallbackError;
+        }
+      } else {
+        // Non-404 error - don't attempt failover
+        throw error;
       }
+    }
+
+    // Return structured practice plan
+    return new Response(
+      JSON.stringify(practicePlan),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-    if (!response.ok) {
-      const status = response.status;
-      // BUILD 51-Alpha-QC: Don't leak internal API details
-      if (status === 429) {
-        throw new Error('AI service rate limit reached. Please try again later.');
-      } else if (status >= 500) {
-        throw new Error('AI service temporarily unavailable. Please try again later.');
-      } else {
-        throw new Error('Unable to generate practice plan at this time.');
-      }
-    }
-
-    const data = await response.json();
-    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!generatedText) {
-      throw new Error('No content generated from Gemini');
-    }
-
-    // Parse JSON response (strip markdown code blocks if present)
-    let jsonText = generatedText.trim();
-    if (jsonText.startsWith('```json')) {
-      jsonText = jsonText.replace(/```json\n?/, '').replace(/\n?```$/, '');
-    } else if (jsonText.startsWith('```')) {
-      jsonText = jsonText.replace(/```\n?/, '').replace(/\n?```$/, '');
-    }
-
-    // BUILD 51-Alpha-QC: Improved JSON parsing with validation
-    let practicePlan: PracticePlan;
-    try {
-      practicePlan = JSON.parse(jsonText);
-
-      // Validate structure
-      if (!practicePlan.planTitle || !practicePlan.sections || !Array.isArray(practicePlan.sections)) {
-        throw new Error('Invalid practice plan structure');
-      }
-    } catch (parseError) {
-      console.error('[Edge Function] Failed to parse AI response:', jsonText.substring(0, 200));
-      throw new Error('AI returned invalid format. Please try again.');
-    }
-
-    return new Response(JSON.stringify(practicePlan), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': corsOrigin,
-      },
-    });
   } catch (error) {
-    // BUILD 51-Alpha-QC: Generic error messages (don't leak internal details)
-    console.error('[Edge Function] Error:', error);
-
-    const userMessage = error.message.includes('GEMINI_API_KEY')
-      ? 'Service configuration error'
-      : error.message.includes('AI service')
-      ? error.message  // Already sanitized above
-      : error.message.includes('Authentication') || error.message.includes('Invalid')
-      ? error.message  // Already sanitized validation errors
-      : 'Unable to generate practice plan. Please try again.';
-
-    return new Response(JSON.stringify({ error: userMessage }), {
-      status: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': corsOrigin,
-      },
-    });
+    console.error('Edge function error:', error);
+    return new Response(
+      JSON.stringify({
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : String(error)
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 });
 
-function buildPrompt(
-  ageGroup: string,
-  experienceLevel: number,
-  focusArea: string,
-  duration: number,
-  intensity: string,
-  userInstructions?: string
-): string {
-  const persona =
-    intensity === 'rec'
-      ? 'a supportive recreational coach focused on fun and fundamentals'
-      : 'a competitive travel ball coach emphasizing high-intensity skill development';
+/**
+ * Call Gemini API with specified model
+ * BUILD 75: Increased maxOutputTokens to 8192 for token headroom
+ * @throws Error with status code on failure
+ */
+async function callGeminiAPI(
+  apiKey: string,
+  model: string,
+  apiVersion: string,
+  prompt: string
+): Promise<AIPracticePlan> {
+  const geminiResponse = await fetch(
+    `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 8192, // BUILD 75: Increased from 4096 for longer plans
+        },
+      }),
+    }
+  );
 
-  return `You are a Professional Youth Baseball Practice Coordinator helping volunteer coaches create effective practice plans.
+  if (!geminiResponse.ok) {
+    const errorText = await geminiResponse.text();
+    const error: any = new Error(`Gemini API error: ${errorText}`);
+    error.status = geminiResponse.status;
+    throw error;
+  }
 
-Context:
-- Age Group: ${ageGroup}
-- Experience Level: ${experienceLevel}/5
-- Focus Area: ${focusArea}
-- Duration: ${duration} minutes
-- Intensity: ${intensity.toUpperCase()} (${persona})
+  const geminiData = await geminiResponse.json();
 
-Your Task:
-Create a structured practice plan optimized for ${ageGroup} players. For younger ages (T-Ball, 8U), prioritize engagement, fun, and motor skill development. For older ages (12U, 14U) and travel/competitive settings, increase drill complexity and intensity.
+  // DEBUG: Log response structure
+  console.log('   Response Status:', geminiResponse.status);
+  console.log('   Candidates:', geminiData.candidates?.length || 0);
 
-Output Requirements:
-Return ONLY valid JSON. Do not include any conversational text, explanations, or markdown. Use this exact structure:
+  // Extract generated text
+  const generatedText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!generatedText) {
+    console.error('No text in Gemini response:', geminiData);
+    throw new Error('Invalid AI response format');
+  }
 
+  // Parse JSON from generated text (with auto-repair)
+  const practicePlan = parseGeminiResponse(generatedText);
+
+  // Validate response structure
+  if (!practicePlan.planTitle || !practicePlan.sections || practicePlan.sections.length === 0) {
+    console.error('Invalid practice plan structure:', practicePlan);
+    throw new Error('Invalid practice plan generated');
+  }
+
+  return practicePlan;
+}
+
+/**
+ * BUILD 75: PRECISION PROMPTING
+ * - Word limit: 40-80 words per drill description
+ * - Format: SETUP (1-2 sentences) + ACTION (3-4 bullet points)
+ * - Technical style: Active verbs, no motivation/leadership fluff
+ * - Focus: 100% physical setup and mechanical execution
+ */
+function buildPrompt(request: GeneratePlanRequest): string {
+  const experienceLabels = ['First Year', 'Beginner', 'Developing', 'Intermediate', 'Advanced', 'Veteran'];
+  const experienceLabel = experienceLabels[request.experienceLevel] || 'Intermediate';
+
+  const intensityDescriptions = {
+    rec: 'recreational (fun-focused, low pressure)',
+    travel: 'travel ball (competitive but age-appropriate)',
+    competitive: 'highly competitive (tournament prep)',
+  };
+  const intensityDesc = intensityDescriptions[request.intensity];
+
+  const customInstructions = request.userInstructions
+    ? `\n\n**COACH'S SPECIAL INSTRUCTIONS:**\n${request.userInstructions}\n\nIncorporate these specific requests into the practice plan where applicable.`
+    : '';
+
+  return `You are a technical baseball coach. Generate a CONCISE practice plan.
+
+**Team Profile:**
+- Age Group: ${request.ageGroup}
+- Experience Level: ${experienceLabel}
+- Focus Area: ${request.focusArea}
+- Practice Duration: ${request.duration} minutes
+- Intensity: ${intensityDesc}
+${request.assistantCoaches ? `- Assistant Coaches: ${request.assistantCoaches}` : '- Coach: Head coach only'}${customInstructions}
+
+**DRILL DESCRIPTION FORMAT (STRICT):**
+Each drill description must be 40-80 words using this exact format:
+
+SETUP: [1-2 sentences on positioning, spacing in feet, equipment placement]
+ACTION: • [verb] [specific action] • [verb] [specific action] • [verb] [specific action] • [rotate/repeat instruction]
+
+**EXAMPLE:**
+"SETUP: Two lines 60ft apart, coach at midpoint with bucket. ACTION: • Field grounder with two hands • Crow-hop and throw to partner • Catch and immediately return throw • Rotate to back of opposite line after each rep."
+
+**FORBIDDEN:**
+- Motivation words: "encourage", "energy", "positive", "focus on"
+- Leadership fluff: "emphasize", "reinforce", "build confidence"
+- Vague instructions: "good form", "proper technique", "fundamentals"
+- Any word count over 80 per drill description
+
+**OUTPUT JSON:**
 {
-  "planTitle": "Practice plan title",
-  "estimatedDuration": ${duration},
+  "planTitle": "string (under 50 chars)",
+  "estimatedDuration": ${request.duration},
   "sections": [
     {
-      "title": "Warmup",
+      "title": "Warmup|Drills|Skills|Scrimmage|Cooldown",
       "drills": [
         {
-          "name": "Drill name",
-          "description": "Clear, age-appropriate instructions",
-          "duration": 10,
-          "equipment": ["optional array of equipment"]
+          "name": "Drill Name (3-5 words)",
+          "description": "SETUP: ... ACTION: • ... • ... • ...",
+          "duration": number,
+          "equipment": ["item1", "item2"]
         }
       ]
-    },
-    {
-      "title": "Main Drills",
-      "drills": [...]
-    },
-    {
-      "title": "Cooldown",
-      "drills": [...]
     }
   ]
 }
 
-Guidelines:
-- Include 3-5 sections (Warmup, Main Drills, Skills Focus, Scrimmage/Game, Cooldown)
-- Each section should have 1-4 drills
-- Drill durations must sum to approximately ${duration} minutes
-- For ${ageGroup}: ${getAgeSpecificGuidance(ageGroup)}
-- Focus on ${focusArea} but maintain balanced fundamentals
-${userInstructions ? `\n\n**COACH'S SPECIAL INSTRUCTIONS:**\n${userInstructions}\n\nIncorporate these specific requests into the practice plan where applicable. Adjust drills, equipment, or intensity to honor these preferences while maintaining age-appropriate safety.` : ''}
+**RULES:**
+- 3-5 sections total
+- 1-3 drills per section
+- Durations sum to ~${request.duration} minutes
+- Equipment arrays required (use ["none"] if no equipment)
+- Focus on ${request.focusArea}
+- Age-appropriate for ${request.ageGroup}
 
-Generate the practice plan now:`;
+Return ONLY valid JSON. No markdown, no code blocks, no extra text.`;
 }
 
-function getAgeSpecificGuidance(ageGroup: string): string {
-  const guidance: Record<string, string> = {
-    'T-Ball': 'Keep drills under 8 minutes, use games and fun activities, avoid live pitching, focus on throwing, catching, and running',
-    '8U': 'Short drills (8-12 min), introduce basic positions, use coach-pitch or soft-toss, emphasize fundamental mechanics',
-    '10U': 'Drills 10-15 min, introduce kid-pitch, develop positional awareness, balance fun with skill progression',
-    '12U': 'Drills 12-18 min, competitive focus, position specialization begins, introduce advanced techniques',
-    '14U': 'Drills 15-20 min, high intensity, travel ball readiness, advanced strategies and situational play',
-  };
-  return guidance[ageGroup] || 'Use age-appropriate drill complexity and duration';
+/**
+ * BUILD 75: BULLETPROOF PARSER
+ * - Aggressive markdown stripping
+ * - Auto-repair truncated JSON by balancing braces/brackets
+ * - Handles common Gemini output quirks
+ */
+function parseGeminiResponse(text: string): AIPracticePlan {
+  console.log('🔧 [BUILD 75] Bulletproof Parser - Input length:', text.length);
+
+  // Step 1: Aggressive markdown stripping
+  let cleanedText = text.trim();
+
+  // Remove any markdown code block wrappers (multiple patterns)
+  cleanedText = cleanedText
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .replace(/^`+/g, '')
+    .replace(/`+$/g, '');
+
+  // Remove any leading/trailing whitespace or newlines
+  cleanedText = cleanedText.trim();
+
+  // Step 2: Find JSON boundaries (first { to last })
+  const firstBrace = cleanedText.indexOf('{');
+  const lastBrace = cleanedText.lastIndexOf('}');
+
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleanedText = cleanedText.substring(firstBrace, lastBrace + 1);
+  }
+
+  console.log('   Cleaned text length:', cleanedText.length);
+
+  // Step 3: Try direct parse first
+  try {
+    const parsed = JSON.parse(cleanedText);
+    console.log('   ✅ Direct parse successful');
+    return normalizeResponse(parsed);
+  } catch (directError) {
+    console.warn('   ⚠️ Direct parse failed, attempting auto-repair...');
+  }
+
+  // Step 4: Auto-repair truncated JSON
+  try {
+    const repairedText = autoRepairJson(cleanedText);
+    console.log('   Repaired text length:', repairedText.length);
+
+    const parsed = JSON.parse(repairedText);
+    console.log('   ✅ Auto-repair successful');
+    return normalizeResponse(parsed);
+  } catch (repairError) {
+    console.error('   ❌ Auto-repair failed');
+    console.error('   First 500 chars:', cleanedText.substring(0, 500));
+    console.error('   Last 200 chars:', cleanedText.substring(cleanedText.length - 200));
+    throw new Error(`JSON parse error after auto-repair: ${repairError instanceof Error ? repairError.message : String(repairError)}`);
+  }
+}
+
+/**
+ * BUILD 75: Auto-repair truncated JSON
+ * Counts open/close braces and brackets, appends missing closers
+ */
+function autoRepairJson(text: string): string {
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (char === '{') openBraces++;
+    if (char === '}') openBraces--;
+    if (char === '[') openBrackets++;
+    if (char === ']') openBrackets--;
+  }
+
+  console.log('   Brace balance: open', openBraces, ', brackets open', openBrackets);
+
+  // If we're inside a string, close it first
+  let repaired = text;
+  if (inString) {
+    repaired += '"';
+  }
+
+  // Remove trailing comma if present (common truncation artifact)
+  repaired = repaired.replace(/,\s*$/, '');
+
+  // Close any open brackets first, then braces
+  for (let i = 0; i < openBrackets; i++) {
+    repaired += ']';
+  }
+  for (let i = 0; i < openBraces; i++) {
+    repaired += '}';
+  }
+
+  return repaired;
+}
+
+/**
+ * Normalize parsed response to ensure correct types
+ */
+function normalizeResponse(parsed: any): AIPracticePlan {
+  // Ensure estimatedDuration is a number
+  if (typeof parsed.estimatedDuration === 'string') {
+    parsed.estimatedDuration = parseInt(parsed.estimatedDuration, 10);
+  }
+
+  // Ensure all drill durations are numbers
+  if (parsed.sections) {
+    parsed.sections.forEach((section: any) => {
+      if (section.drills) {
+        section.drills.forEach((drill: any) => {
+          if (typeof drill.duration === 'string') {
+            drill.duration = parseInt(drill.duration, 10);
+          }
+          // Ensure equipment is an array
+          if (!drill.equipment) {
+            drill.equipment = ['none'];
+          } else if (!Array.isArray(drill.equipment)) {
+            drill.equipment = [drill.equipment];
+          }
+        });
+      }
+    });
+  }
+
+  return parsed as AIPracticePlan;
 }

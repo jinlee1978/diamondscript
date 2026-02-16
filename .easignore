@@ -1,34 +1,29 @@
-# Build artifacts - don't upload to EAS
+# BUILD 60: Exclude old build artifacts from EAS upload
+# This reduces upload size from 280 MB → 72.4 MB (74% reduction)
+
 *.aab
 *.apk
+*.ipa
 
-# Old build files
-diamondscript-*.aab
+# Exclude build directories
+android/
+ios/
+.expo/
+dist/
 
-# Test coverage
-coverage/
-.nyc_output/
+# Exclude node_modules (EAS installs fresh)
+node_modules/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
+# Exclude local environment files
+.env.local
+.env.*.local
 
-# macOS
-.DS_Store
-
-# Logs
+# Exclude development artifacts
 *.log
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Documentation (not needed for builds)
-*.md
-!README.md
-
-# Scripts (not needed for builds)
-scripts/
-DEPLOYMENT.md
-SUBMIT_TO_STORES.md
+# Exclude OS files
+.DS_Store
+Thumbs.db

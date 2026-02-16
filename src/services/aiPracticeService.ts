@@ -1,7 +1,11 @@
 import { supabase } from '../config/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PracticeSession, PracticeRequest, DrillBlock, Station, StationLayout } from '../data/types/practice';
 import { Drill, DrillCategory } from '../data/types/drill';
 import { AgeGroup } from '../data/types/ageGroup';
+
+// BUILD 67: TypeScript global for development mode flag
+declare const __DEV__: boolean;
 
 export interface AIPracticeRequest {
   ageGroup: string;
@@ -9,6 +13,7 @@ export interface AIPracticeRequest {
   focusArea: string;
   duration: number;
   intensity: 'rec' | 'travel' | 'competitive';
+  assistantCoaches?: number; // BUILD 59: Number of assistant coaches (0-3)
   userInstructions?: string; // BUILD 54: Custom coach instructions
 }
 
@@ -31,36 +36,190 @@ export interface AIPracticePlan {
 }
 
 /**
- * Generate an AI-powered practice plan using Gemini 3 Flash via Supabase Edge Functions
+ * BUILD 67: AUTO-REPAIR LOGIC - Automatic session recovery with retry
+ *
+ * Flow:
+ * 1. Freshness Check: Get current session
+ * 2. Re-Auth Trigger: If null or 401 → sign in anonymously
+ * 3. ID Lock: Save user ID to AsyncStorage immediately
+ * 4. Retry: Attempt request again with fresh token
+ *
  * @param request Practice plan parameters
  * @returns Structured practice plan with drills
- * @throws Error if generation fails or returns invalid data
+ * @throws Error if generation fails after retry
  */
 export async function generateAIPracticePlan(
   request: AIPracticeRequest
 ): Promise<AIPracticePlan> {
+  const USER_ID_KEY = '@diamondscript/supabase_user_id';
+
   try {
-    const { data, error } = await supabase.functions.invoke('generate-practice-plan', {
-      body: request,
+    if (__DEV__) {
+      console.log('🤖 [BUILD 67] Starting AI practice plan generation...');
+      console.log('   🔍 Freshness Check: Checking current session...');
+    }
+
+    // STEP 1: FRESHNESS CHECK - Get current session
+    const { data: { session } } = await supabase.auth.getSession();
+
+    // Check if session exists
+    if (!session?.access_token) {
+      if (__DEV__) {
+        console.warn('   ⚠️ No active session found, triggering re-auth...');
+      }
+
+      // STEP 2: RE-AUTH TRIGGER - Sign in anonymously
+      return await reAuthAndRetry(request, USER_ID_KEY);
+    }
+
+    if (__DEV__) {
+      console.log('   ✅ Session found');
+      console.log('   User ID:', session.user.id);
+      console.log('   Token length:', session.access_token.length);
+      console.log('   📤 Attempting Edge Function call...');
+    }
+
+    // STEP 3: ATTEMPT REQUEST - Try with current session
+    try {
+      const result = await invokeEdgeFunction(request, session.access_token);
+      return result;
+    } catch (error: any) {
+      // Check if it's a 401 error
+      const statusCode = error?.context?.status || (error.message?.includes('401') ? 401 : null);
+
+      if (statusCode === 401) {
+        if (__DEV__) {
+          console.warn('   ⚠️ 401 Authentication failed, triggering re-auth...');
+        }
+
+        // STEP 4: RE-AUTH TRIGGER - Session token was rejected, sign in anonymously and retry
+        return await reAuthAndRetry(request, USER_ID_KEY);
+      }
+
+      // Not a 401 error - re-throw
+      throw error;
+    }
+  } catch (error) {
+    // Re-throw with enhanced error context
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`Unexpected error during AI generation: ${String(error)}`);
+  }
+}
+
+/**
+ * Re-authenticate and retry the request once
+ */
+async function reAuthAndRetry(
+  request: AIPracticeRequest,
+  userIdKey: string
+): Promise<AIPracticePlan> {
+  if (__DEV__) {
+    console.log('   🔄 Re-Auth: Signing in anonymously...');
+  }
+
+  // Sign in anonymously
+  const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously();
+
+  if (signInError || !signInData?.session?.access_token) {
+    if (__DEV__) {
+      console.error('   ❌ Anonymous sign-in failed:', signInError?.message);
+    }
+    throw new Error('Authentication failed. Please restart the app and try again.');
+  }
+
+  const freshToken = signInData.session.access_token;
+  const userId = signInData.session.user.id;
+
+  if (__DEV__) {
+    console.log('   ✅ Anonymous session created');
+    console.log('   User ID:', userId);
+    console.log('   Token length:', freshToken.length);
+  }
+
+  // STEP 3: ID LOCK - Save user ID to AsyncStorage immediately (BUILD 73: migrated from SecureStore)
+  try {
+    await AsyncStorage.setItem(userIdKey, userId);
+    if (__DEV__) {
+      console.log('   ✅ User ID saved to storage');
+    }
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('   ⚠️ Failed to save user ID to storage:', error);
+    }
+    // Non-fatal - continue with request
+  }
+
+  // STEP 4: RETRY - Attempt request again with fresh token
+  if (__DEV__) {
+    console.log('   🔁 Retry: Invoking Edge Function with fresh token...');
+  }
+
+  return await invokeEdgeFunction(request, freshToken);
+}
+
+/**
+ * Helper function to invoke Edge Function with explicit token mapping
+ */
+async function invokeEdgeFunction(
+  request: AIPracticeRequest,
+  accessToken: string
+): Promise<AIPracticePlan> {
+  try {
+    // 30-second timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Request timeout: AI generation took too long. Please try again.')), 30000);
     });
 
-    if (error) {
-      // Enhanced error reporting with status code
-      const statusCode = (error as any).context?.status || 'Unknown';
-      const errorMessage = error.message || 'Unknown error';
+    // Invoke Edge Function with explicit Authorization header
+    const invokePromise = supabase.functions.invoke('generate-practice-plan', {
+      body: request,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
+    const { data, error } = await Promise.race([invokePromise, timeoutPromise]);
+
+    if (error) {
+      const statusCode = (error as any).context?.status;
+
+      // BUILD 67: Enhanced error logging for debugging
       if (__DEV__) {
+        const errorMessage = error.message || 'Unknown error';
         console.error('🚨 AI Generation Failed');
-        console.error('   Status Code:', statusCode);
+        console.error('   Status Code:', statusCode || 'Unknown');
         console.error('   Error Message:', errorMessage);
+        console.error('   Token Length:', accessToken.length);
         console.error('   Full Error:', error);
       }
 
-      throw new Error(`AI generation failed [${statusCode}]: ${errorMessage}`);
+      // BUILD 67: Specific error messages for debugging
+      if (statusCode === 401) {
+        throw new Error('Authentication failed. The session token was rejected by the server. Please contact support.');
+      } else if (statusCode === 403) {
+        throw new Error('Access denied. Your account may not have permission to use AI features.');
+      } else if (statusCode === 429) {
+        throw new Error('Rate limit exceeded. Please wait a moment before trying again.');
+      }
+
+      // Generic user-facing error (don't expose internal details in production)
+      throw new Error('Unable to generate AI practice plan. Please check your connection and try again.');
     }
 
     if (!data || !data.planTitle || !data.sections) {
+      if (__DEV__) {
+        console.error('   ❌ Invalid response structure:', data);
+      }
       throw new Error('Invalid practice plan format received from AI');
+    }
+
+    if (__DEV__) {
+      console.log('   ✅ AI plan generated successfully');
+      console.log('   Title:', data.planTitle);
+      console.log('   Sections:', data.sections.length);
     }
 
     return data as AIPracticePlan;
@@ -180,7 +339,7 @@ export function convertAIPlanToPracticeSession(
     experienceLevel: request.experienceLevel,
     intensity: intensityNumber,
     numDrills: selectedDrills.length,
-    assistantCoaches: 0, // AI plans assume single coach
+    assistantCoaches: request.assistantCoaches ?? 0, // BUILD 59: Use actual value or default to 0
     subscriptionTier: tier,
   };
 

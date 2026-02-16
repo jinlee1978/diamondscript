@@ -1,18 +1,55 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Station } from '../src/data/types';
+import { Station, DrillBlock } from '../src/data/types';
 import DrillCard from './DrillCard';
+import { usePractice } from '../context/PracticeContext';
 
 interface Props {
   station: Station;
   stationIndex: number;
   transitionMinutes: number;
+  isEditMode?: boolean;
+  coachNames?: string[]; // BUILD 64: Optional custom coach names
 }
 
 const COACH_LABELS = ['Head Coach', 'Assistant 1', 'Assistant 2', 'Assistant 3'];
 
-export default function StationCard({ station, stationIndex, transitionMinutes }: Props) {
-  const coachLabel = COACH_LABELS[station.coachIndex] ?? `Coach ${station.coachIndex + 1}`;
+export default function StationCard({ station, stationIndex, transitionMinutes, isEditMode = false, coachNames }: Props) {
+  const { tier, reorderDrillsInStation } = usePractice();
+
+  // BUILD 64: Use custom coach name if available, otherwise fall back to default labels
+  const coachLabel = coachNames && coachNames[station.coachIndex]
+    ? coachNames[station.coachIndex]
+    : (COACH_LABELS[station.coachIndex] ?? `Coach ${station.coachIndex + 1}`);
+
+  const isPro = tier === 'pro';
+  const canReorder = isPro && isEditMode && station.drills.length > 1;
+
+  // BUILD 63: Arrow-based swap - move drill up (swap with previous)
+  const handleMoveUp = useCallback(
+    (blockIndex: number) => {
+      if (blockIndex <= 0) return;
+
+      const newOrder = [...station.drills];
+      [newOrder[blockIndex - 1], newOrder[blockIndex]] = [newOrder[blockIndex], newOrder[blockIndex - 1]];
+
+      reorderDrillsInStation(stationIndex, newOrder);
+    },
+    [station.drills, stationIndex, reorderDrillsInStation]
+  );
+
+  // BUILD 63: Arrow-based swap - move drill down (swap with next)
+  const handleMoveDown = useCallback(
+    (blockIndex: number) => {
+      if (blockIndex >= station.drills.length - 1) return;
+
+      const newOrder = [...station.drills];
+      [newOrder[blockIndex], newOrder[blockIndex + 1]] = [newOrder[blockIndex + 1], newOrder[blockIndex]];
+
+      reorderDrillsInStation(stationIndex, newOrder);
+    },
+    [station.drills, stationIndex, reorderDrillsInStation]
+  );
 
   return (
     <View style={styles.container}>
@@ -31,7 +68,11 @@ export default function StationCard({ station, stationIndex, transitionMinutes }
             stationIndex={stationIndex}
             blockIndex={i}
             isLast={i === station.drills.length - 1}
+            isFirst={i === 0}
             transitionMinutes={transitionMinutes}
+            isEditMode={isEditMode && canReorder}
+            onMoveUp={canReorder ? () => handleMoveUp(i) : undefined}
+            onMoveDown={canReorder ? () => handleMoveDown(i) : undefined}
           />
         ))}
       </View>

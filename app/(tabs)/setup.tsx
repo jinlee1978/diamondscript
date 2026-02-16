@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-// BUILD 55 TROUBLESHOOTING: Temporarily commented out netinfo
-// import NetInfo from '@react-native-community/netinfo';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePractice } from '../../context/PracticeContext';
 import { AgeGroup } from '../../src/data/types';
 import AgeGroupPicker from '../../components/AgeGroupPicker';
 import Stepper from '../../components/Stepper';
 import UpgradeBanner from '../../components/UpgradeBanner';
-import AICard from '../../components/AICard';
-// BUILD 55 TROUBLESHOOTING: Temporarily commented out
-// import SegmentedControl from '../../components/SegmentedControl';
+import PaywallModal from '../../components/PaywallModal';
 import { filterCandidates } from '../../src/core/engine/drillSelector';
 import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
-import { generateAIPracticePlan, convertAIPlanToPracticeSession } from '../../src/services/aiPracticeService';
-import { supabase } from '../../src/config/supabase';
+// BUILD 68: Use Staff Registry instead of manual coach names
+import { loadCoachingStaff } from '../../src/data/storage/coachingStorage';
 
 // Human-readable labels for experience levels
 const EXPERIENCE_LABELS: Record<number, string> = {
@@ -28,10 +25,8 @@ const EXPERIENCE_LABELS: Record<number, string> = {
 
 export default function SetupScreen() {
   const router = useRouter();
-  const { tier, lastRequest, generateSession, importPractice } = usePractice();
-
-  // BUILD 55 TROUBLESHOOTING: Temporarily commented out
-  // const [selectedMode, setSelectedMode] = useState(0);
+  const insets = useSafeAreaInsets();
+  const { tier, lastRequest, generateSession, showPaywall, paywallTrigger, closePaywall, setReviewerBypass } = usePractice();
 
   // Local form state, pre-filled from last request
   const [ageGroup, setAgeGroup] = useState<AgeGroup>(lastRequest?.ageGroup ?? AgeGroup.AGE_10U);
@@ -40,50 +35,7 @@ export default function SetupScreen() {
   const [numDrills, setNumDrills] = useState(lastRequest?.numDrills ?? 4);
   const [assistants, setAssistants] = useState(lastRequest?.assistantCoaches ?? 0);
 
-  // AI Practice Generator state
-  const [focusArea, setFocusArea] = useState('Hitting');
-  const [duration, setDuration] = useState(60);
-  const [intensityType, setIntensityType] = useState<'rec' | 'travel' | 'competitive'>('rec');
-  const [specialInstructions, setSpecialInstructions] = useState(''); // BUILD 54: Custom instructions
-  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [cooldownSeconds, setCooldownSeconds] = useState(0); // BUILD 53: 60-second cooldown
-  // BUILD 55 TROUBLESHOOTING: Temporarily hardcoded to true
-  // const [isOnline, setIsOnline] = useState(true);
-
-  // AUTH GUARD: Check for valid Supabase session before enabling AI button
-  useEffect(() => {
-    async function checkAuthSession() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setIsAuthReady(!!session);
-      } catch (error) {
-        if (__DEV__) {
-          console.error('Auth session check failed:', error);
-        }
-        setIsAuthReady(false);
-      }
-    }
-    checkAuthSession();
-  }, []);
-
-  // BUILD 53: Cooldown timer - count down every second
-  useEffect(() => {
-    if (cooldownSeconds > 0) {
-      const timer = setTimeout(() => {
-        setCooldownSeconds(cooldownSeconds - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [cooldownSeconds]);
-
-  // BUILD 55 TROUBLESHOOTING: NetInfo listener temporarily commented out
-  // useEffect(() => {
-  //   const unsubscribe = NetInfo.addEventListener(state => {
-  //     setIsOnline(state.isConnected ?? true);
-  //   });
-  //   return () => unsubscribe();
-  // }, []);
+  // BUILD 68: Coach names now come from Staff Registry (removed manual input)
 
   // Sync when lastRequest loads from AsyncStorage
   useEffect(() => {
@@ -117,83 +69,42 @@ export default function SetupScreen() {
   const intensityLocked = tier === 'free';
   const assistantsLocked = tier === 'free';
 
-  const handleAIGenerate = async () => {
-    setIsGeneratingAI(true);
-    try {
-      // Map AgeGroup enum to string format
-      const ageGroupString = ageGroup === AgeGroup.T_BALL ? 'T-Ball' :
-                             ageGroup === AgeGroup.AGE_8U ? '8U' :
-                             ageGroup === AgeGroup.AGE_10U ? '10U' :
-                             ageGroup === AgeGroup.AGE_12U ? '12U' : '14U';
+  const handleGo = async () => {
+    // BUILD 68: Load coach names from Staff Registry
+    const staff = await loadCoachingStaff();
+    const totalCoaches = assistants + 1; // Head coach + assistants
+    const coachNames = staff.coaches
+      .slice(0, totalCoaches)
+      .map(coach => coach.name);
 
-      // Generate AI practice plan via Supabase Edge Function
-      const aiPlan = await generateAIPracticePlan({
-        ageGroup: ageGroupString,
+    // BUILD 81: Check if generateSession was successful (History Gate may block)
+    const success = generateSession(
+      {
+        ageGroup,
         experienceLevel: experience,
-        focusArea,
-        duration,
-        intensity: intensityType,
-        userInstructions: specialInstructions || undefined, // BUILD 54: Custom instructions
-      });
+        intensity,
+        numDrills,
+        assistantCoaches: assistants,
+        subscriptionTier: tier,
+      },
+      coachNames.length > 0 ? coachNames : undefined
+    );
 
-      // Convert AI plan to PracticeSession format
-      const practiceSession = convertAIPlanToPracticeSession(aiPlan, {
-        ageGroup: ageGroupString,
-        experienceLevel: experience,
-        focusArea,
-        duration,
-        intensity: intensityType,
-      }, tier);
-
-      // Save to practice history and set as current session
-      importPractice(practiceSession);
-
-      // BUILD 53: Start 60-second cooldown to prevent accidental double-spending
-      setCooldownSeconds(60);
-
-      // Navigate to practice view to see the generated plan
+    // Only navigate if session was created (not blocked by History Gate)
+    if (success) {
       router.push('/practice');
-
-    } catch (error) {
-      Alert.alert(
-        'AI Generation Failed',
-        error instanceof Error ? error.message : 'Unable to generate AI practice plan. Please try again.',
-        [{ text: 'OK', style: 'cancel' }]
-      );
-    } finally {
-      setIsGeneratingAI(false);
     }
   };
 
-  const handleGo = () => {
-    generateSession({
-      ageGroup,
-      experienceLevel: experience,
-      intensity,
-      numDrills,
-      assistantCoaches: assistants,
-      subscriptionTier: tier,
-    });
-    router.push('/practice');
-  };
-
   return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-      {/* BUILD 55 TROUBLESHOOTING: SegmentedControl temporarily removed */}
-      {/* <SegmentedControl
-        options={['Manual', 'AI Generator']}
-        selectedIndex={selectedMode}
-        onIndexChange={setSelectedMode}
-      /> */}
-
-      {/* Manual Practice Generator */}
-      {/* BUILD 55 TROUBLESHOOTING: Removed conditional rendering */}
-      {/* {selectedMode === 0 && ( */}
-        <>
-          {/* Age Group */}
-          <View style={styles.section}>
-            <AgeGroupPicker value={ageGroup} onChange={setAgeGroup} />
-          </View>
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+    >
+      {/* Age Group */}
+      <View style={styles.section}>
+        <AgeGroupPicker value={ageGroup} onChange={setAgeGroup} />
+      </View>
 
       {/* Experience */}
       <View style={styles.section}>
@@ -256,20 +167,21 @@ export default function SetupScreen() {
         {assistantsLocked && <UpgradeBanner feature="station splitting" />}
       </View>
 
-      {/* Go button */}
+      {/* BUILD 68: Coach names now loaded from Staff Registry automatically */}
+
+      {/* Go button - BUILD 59: Forest Green matching AI Lab */}
       <TouchableOpacity style={styles.goButton} onPress={handleGo} activeOpacity={0.85}>
         <Text style={styles.goText}>Go</Text>
       </TouchableOpacity>
-        </>
-      {/* BUILD 55 TROUBLESHOOTING: Removed closing conditional */}
-      {/* )} */}
 
-      {/* BUILD 55 TROUBLESHOOTING: AI Generator temporarily replaced with Hello World */}
-      {/* {selectedMode === 1 && ( */}
-      <View style={styles.section}>
-        <Text style={styles.helloWorld}>Hello World - AI Generator Placeholder</Text>
-      </View>
-      {/* )} */}
+      {/* BUILD 81: PaywallModal for History Gate */}
+      <PaywallModal
+        visible={showPaywall}
+        onClose={closePaywall}
+        onSuccess={closePaywall}
+        onReviewerBypass={setReviewerBypass}
+        trigger={paywallTrigger ?? undefined}
+      />
     </ScrollView>
   );
 }
@@ -277,7 +189,7 @@ export default function SetupScreen() {
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F8FAFC', // BUILD 63: Soft off-white background
   },
   container: {
     padding: 24,
@@ -292,7 +204,7 @@ const styles = StyleSheet.create({
   expLabel: {
     textAlign: 'right',
     fontSize: 13,
-    color: '#1B4332',
+    color: '#1B4332', // BUILD 59: Forest Green
     fontWeight: '600',
     marginTop: -4,
     paddingRight: 2,
@@ -311,9 +223,10 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
   },
+  // BUILD 68: Coach name styles removed - now using Staff Registry
   goButton: {
     marginTop: 32,
-    backgroundColor: '#1B4332',
+    backgroundColor: '#1B4332', // BUILD 59: Forest Green
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -330,71 +243,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 2,
     textTransform: 'uppercase',
-  },
-  aiInputGroup: {
-    marginBottom: 16,
-  },
-  aiLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1E40AF',
-    marginBottom: 8,
-  },
-  textInput: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  multilineInput: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#1F2937',
-    minHeight: 80,
-  },
-  intensityTypeRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  intensityTypeButton: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#BFDBFE',
-    minHeight: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  intensityTypeButtonActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#1E40AF',
-  },
-  intensityTypeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  intensityTypeTextActive: {
-    color: '#FFFFFF',
-  },
-  helloWorld: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1B4332',
-    textAlign: 'center',
-    padding: 24,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    marginTop: 32,
   },
 });

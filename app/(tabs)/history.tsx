@@ -1,8 +1,10 @@
-import React, { useMemo } from 'react';
-import { View, Text, SectionList, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, SectionList, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePractice } from '../../context/PracticeContext';
 import CategoryBadge from '../../components/CategoryBadge';
+import SourceBadge from '../../components/SourceBadge';
 import { DrillCategory } from '../../src/data/types';
 
 
@@ -32,7 +34,23 @@ const CATEGORY_ORDER: DrillCategory[] = ['hitting', 'fielding', 'pitching', 'bas
 
 export default function HistoryScreen() {
   const router = useRouter();
-  const { tier, history, restoreSession, deletePracticeHistory } = usePractice();
+  const insets = useSafeAreaInsets();
+  const { tier, history, restoreSession, deletePracticeHistory, updateCoachNote } = usePractice();
+
+  // BUILD 74: Local state for coach notes (tracks in-progress edits)
+  const [editingNotes, setEditingNotes] = useState<Record<number, string>>({});
+
+  // Debounced save for coach notes
+  const handleNoteChange = useCallback((savedAt: number, text: string) => {
+    setEditingNotes((prev) => ({ ...prev, [savedAt]: text }));
+  }, []);
+
+  const handleNoteBlur = useCallback((savedAt: number) => {
+    const note = editingNotes[savedAt];
+    if (note !== undefined) {
+      updateCoachNote(savedAt, note);
+    }
+  }, [editingNotes, updateCoachNote]);
 
   // Cap at 5 for free tier
   const visibleHistory = tier === 'pro' ? history : history.slice(0, FREE_HISTORY_LIMIT);
@@ -59,7 +77,7 @@ export default function HistoryScreen() {
 
   if (visibleHistory.length === 0) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <Text style={styles.empty}>No practices saved yet. Generate one to get started.</Text>
       </View>
     );
@@ -97,7 +115,10 @@ export default function HistoryScreen() {
         activeOpacity={0.8}
       >
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTime}>{timeStr}</Text>
+          <View style={styles.cardHeaderLeft}>
+            <Text style={styles.cardTime}>{timeStr}</Text>
+            {session.source && <SourceBadge source={session.source} size="small" />}
+          </View>
           <View style={styles.cardActions}>
             <View onStartShouldSetResponder={() => true}>
               <TouchableOpacity
@@ -128,6 +149,20 @@ export default function HistoryScreen() {
             <CategoryBadge key={cat} category={cat} />
           ))}
         </View>
+        {/* BUILD 74: Coach Notes Input */}
+        <View onStartShouldSetResponder={() => true}>
+          <TextInput
+            style={styles.coachNoteInput}
+            placeholder="Add a post-practice note..."
+            placeholderTextColor="#9CA3AF"
+            value={editingNotes[savedAt] ?? item.coachNote ?? ''}
+            onChangeText={(text) => handleNoteChange(savedAt, text)}
+            onBlur={() => handleNoteBlur(savedAt)}
+            multiline
+            numberOfLines={2}
+            textAlignVertical="top"
+          />
+        </View>
       </TouchableOpacity>
     );
   };
@@ -152,7 +187,7 @@ export default function HistoryScreen() {
   return (
     <SectionList
       style={styles.scroll}
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
       sections={sections}
       renderSectionHeader={renderSectionHeader}
       renderItem={renderHistoryItem}
@@ -169,7 +204,7 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#F8FAFC',
   },
   container: {
     padding: 20,
@@ -221,6 +256,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
+  cardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   cardTime: {
     fontSize: 13,
     fontWeight: '600',
@@ -258,6 +298,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     flexWrap: 'wrap',
+  },
+  coachNoteInput: {
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    fontSize: 13,
+    color: '#374151',
+    minHeight: 44,
   },
   upgradeNote: {
     backgroundColor: '#FEF3C7',

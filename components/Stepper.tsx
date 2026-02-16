@@ -8,9 +8,10 @@ interface Props {
   onChange: (value: number) => void;
   label?: string;
   locked?: boolean;
+  step?: number; // BUILD 59: Support custom step increments (e.g., 15 for duration)
 }
 
-export default function Stepper({ value, min, max, onChange, label, locked = false }: Props) {
+export default function Stepper({ value, min, max, onChange, label, locked = false, step = 1 }: Props) {
   const canDecrement = value > min && !locked;
   const canIncrement = value < max && !locked;
 
@@ -20,7 +21,7 @@ export default function Stepper({ value, min, max, onChange, label, locked = fal
       <View style={styles.controls}>
         <TouchableOpacity
           style={[styles.button, !canDecrement && styles.buttonDisabled]}
-          onPress={() => canDecrement && onChange(value - 1)}
+          onPress={() => canDecrement && onChange(value - step)}
           disabled={!canDecrement}
           activeOpacity={0.6}
         >
@@ -31,7 +32,7 @@ export default function Stepper({ value, min, max, onChange, label, locked = fal
 
         <TouchableOpacity
           style={[styles.button, !canIncrement && styles.buttonDisabled]}
-          onPress={() => canIncrement && onChange(value + 1)}
+          onPress={() => canIncrement && onChange(value + step)}
           disabled={!canIncrement}
           activeOpacity={0.6}
         >
