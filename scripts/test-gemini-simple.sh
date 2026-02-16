@@ -2,7 +2,7 @@
 # Simple Gemini Connection Test (using service role key for quick testing)
 
 SUPABASE_URL="https://wgcunvzrknxqbkdaflil.supabase.co"
-SERVICE_ROLE_KEY="sb_secret_VIpOsALlVLep15NP8-W1rw_Vdk9KlYc"
+SERVICE_ROLE_KEY="SUPABASE_KEY="YOUR_KEY_HERE""
 
 echo "🧪 Testing Gemini Edge Function (Service Role)"
 echo "=============================================="
