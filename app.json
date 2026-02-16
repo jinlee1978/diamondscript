@@ -3,7 +3,7 @@
     "main": "node_modules/expo-router/entry.js",
     "name": "DiamondScript",
     "slug": "diamondscript",
-    "version": "1.0.0",
+    "version": "1.0.7",
     "scheme": "diamondscript",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -30,8 +30,8 @@
         "backgroundColor": "#1B4332"
       },
       "package": "com.diamondscript.app",
-      "versionCode": 56,
-      "permissions": []
+      "versionCode": 89,
+      "permissions": ["com.android.vending.BILLING"]
     },
     "plugins": [
       "expo-router",

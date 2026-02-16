@@ -8,15 +8,21 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "production": {
       "resourceClass": "large",
       "cache": {
         "disabled": true
       },
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
-        "EAS_BUILD_CACHE_BREAKER": "RECOVERY_FINAL",
+        "EAS_BUILD_CACHE_BREAKER": "BUILD_89_PRODUCTION_HARDENED",
         "NODE_ENV": "production"
       }
     }
