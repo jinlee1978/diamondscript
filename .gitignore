@@ -63,3 +63,4 @@ coverage/
 google-services.json
 google-play-service-account.json
 GoogleService-Info.plist
+scripts/test-gemini-simple.sh
