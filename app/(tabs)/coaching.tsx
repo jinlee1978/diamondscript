@@ -111,7 +111,7 @@ export default function CoachingScreen() {
 
   if (!staff) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={[styles.container]}>
         <Text style={styles.loading}>Loading coaching staff...</Text>
       </View>
     );
@@ -120,7 +120,7 @@ export default function CoachingScreen() {
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + 20 }]}
+      contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 20 }]}
     >
       <Text style={styles.title}>Coaching Staff</Text>
       <Text style={styles.subtitle}>

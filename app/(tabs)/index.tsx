@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -25,7 +25,7 @@ interface PendingImport {
   isDuplicate?: boolean;
   // Practice fields
   totalMinutes?: number;
-  stationCount?: number;
+  coachCount?: number; // BUILD 93: renamed from stationCount to match export field
   ageGroup?: string;
   practiceData?: any; // Full practice session for import
 }
@@ -114,9 +114,9 @@ export default function HomeScreen() {
               }
             }
 
-            // BUILD 49: PRACTICE IMPORT
+            // BUILD 49/93: PRACTICE IMPORT (coachCount — matches export format in practice.tsx)
             if (contentType === 'practice') {
-              if (data.ageGroup && data.totalMinutes && data.stationCount) {
+              if (data.ageGroup && data.totalMinutes && (data.coachCount || data.stationCount)) {
                 const practiceHash = `practice-${data.ageGroup}-${data.totalMinutes}`;
                 if (promptedDrills.has(practiceHash)) {
                   return true; // Already prompted
@@ -128,7 +128,7 @@ export default function HomeScreen() {
                   type: 'practice',
                   ageGroup: data.ageGroup,
                   totalMinutes: data.totalMinutes,
-                  stationCount: data.stationCount,
+                  coachCount: data.coachCount || data.stationCount || 1, // BUILD 93: match export field
                   practiceData: data,
                 });
 
@@ -174,11 +174,12 @@ export default function HomeScreen() {
         pendingImport.equipment || []
       );
     } else if (pendingImport.type === 'practice') {
-      // BUILD 51: Practice import now fully implemented
+      // BUILD 51/93: Practice import — check return value (false = paywall blocked)
       if (pendingImport.practiceData?.session) {
-        importPractice(pendingImport.practiceData.session);
-        // Navigate to practice screen to view imported practice
-        router.push('/practice');
+        const success = importPractice(pendingImport.practiceData.session);
+        if (success) {
+          router.push('/practice');
+        }
       } else {
         Alert.alert('Import Error', 'Practice data is incomplete. Unable to import.');
       }
@@ -207,7 +208,7 @@ export default function HomeScreen() {
           headerRight: ({ tintColor }) => (
             <TouchableOpacity
               onPress={() => checkClipboard(true)}
-              style={{ paddingRight: 16 }}
+              style={{ paddingRight: 0 }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Text style={{ fontSize: 22 }}>{'📥'}</Text>
@@ -215,7 +216,10 @@ export default function HomeScreen() {
           ),
         }}
       />
-      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24 }]}
+      >
         {/* BUILD 51: Import Card - ALWAYS visible, even during loading */}
         {/* BUILD 49: Universal Import Card - supports both Drills and Practices */}
         {pendingImport && (
@@ -277,7 +281,7 @@ export default function HomeScreen() {
                   {pendingImport.ageGroup} Practice
                 </Text>
                 <Text style={styles.importDrillDesc}>
-                  {pendingImport.totalMinutes} minutes • {pendingImport.stationCount} stations
+                  {pendingImport.totalMinutes} minutes • {pendingImport.coachCount} coach{pendingImport.coachCount !== 1 ? 'es' : ''}
                 </Text>
               </View>
 
@@ -324,8 +328,8 @@ export default function HomeScreen() {
 
           {/* Hero */}
           <View style={styles.hero}>
-            <View style={styles.logoContainer}>
-              <Text style={styles.diamondIcon}>{'◆'}</Text>
+            <View style={styles.logoOuter}>
+              <View style={styles.logoInner} />
             </View>
             <Text style={styles.heroTitle}>DiamondScript</Text>
             <Text style={styles.heroSub}>Practice generation for every diamond.</Text>
@@ -421,15 +425,17 @@ export default function HomeScreen() {
           )}
         </>
       )}
-    </View>
+    </ScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scroll: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  container: {
     padding: 24,
   },
   loading: {
@@ -472,26 +478,25 @@ const styles = StyleSheet.create({
     marginBottom: 48,
     alignItems: 'center',
   },
-  logoContainer: {
-    width: 64,
-    height: 64,
-    backgroundColor: '#1B4332',
-    borderRadius: 20,
+  logoOuter: {
+    width: 56,
+    height: 56,
+    backgroundColor: '#1B3D2F',
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
-    shadowColor: '#1B4332',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowColor: '#1B3D2F',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
     transform: [{ rotate: '45deg' }],
   },
-  diamondIcon: {
-    fontSize: 28,
-    color: '#D4AF37',
-    transform: [{ rotate: '-45deg' }],
-    fontWeight: '700',
+  logoInner: {
+    width: 18,
+    height: 18,
+    backgroundColor: '#D4AF37',
   },
   heroTitle: {
     fontSize: 36,

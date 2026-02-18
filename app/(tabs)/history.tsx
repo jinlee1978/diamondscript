@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, SectionList, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePractice } from '../../context/PracticeContext';
@@ -77,7 +78,7 @@ export default function HistoryScreen() {
 
   if (visibleHistory.length === 0) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
         <Text style={styles.empty}>No practices saved yet. Generate one to get started.</Text>
       </View>
     );
@@ -125,10 +126,10 @@ export default function HistoryScreen() {
                 onPress={() => deletePracticeHistory(savedAt)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Text style={styles.cardDelete}>{'\u00D7'}</Text>
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.cardChevron}>{'\u203A'}</Text>
+            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
           </View>
         </View>
         <View style={styles.cardMeta}>
@@ -187,7 +188,7 @@ export default function HistoryScreen() {
   return (
     <SectionList
       style={styles.scroll}
-      contentContainerStyle={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+      contentContainerStyle={[styles.container, { paddingBottom: insets.bottom }]}
       sections={sections}
       renderSectionHeader={renderSectionHeader}
       renderItem={renderHistoryItem}

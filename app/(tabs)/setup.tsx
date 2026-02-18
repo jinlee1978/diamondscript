@@ -26,7 +26,7 @@ const EXPERIENCE_LABELS: Record<number, string> = {
 export default function SetupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { tier, lastRequest, generateSession, showPaywall, paywallTrigger, closePaywall, setReviewerBypass } = usePractice();
+  const { tier, lastRequest, generateSession, showPaywall, paywallTrigger, closePaywall } = usePractice();
 
   // Local form state, pre-filled from last request
   const [ageGroup, setAgeGroup] = useState<AgeGroup>(lastRequest?.ageGroup ?? AgeGroup.AGE_10U);
@@ -97,92 +97,95 @@ export default function SetupScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
-    >
-      {/* Age Group */}
-      <View style={styles.section}>
-        <AgeGroupPicker value={ageGroup} onChange={setAgeGroup} />
-      </View>
-
-      {/* Experience */}
-      <View style={styles.section}>
-        <View style={styles.expRow}>
-          <Stepper
-            label="Experience"
-            value={experience}
-            min={0}
-            max={5}
-            onChange={setExperience}
-          />
+    <>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24 }]}
+      >
+        {/* Age Group */}
+        <View style={styles.section}>
+          <AgeGroupPicker value={ageGroup} onChange={setAgeGroup} />
         </View>
-        <Text style={styles.expLabel}>{EXPERIENCE_LABELS[experience]}</Text>
-      </View>
 
-      {/* Intensity */}
-      <View style={styles.section}>
-        <Stepper
-          label="Intensity"
-          value={intensity}
-          min={1}
-          max={5}
-          onChange={setIntensity}
-          locked={intensityLocked}
-        />
-        {intensityLocked && <UpgradeBanner feature="custom intensity" />}
-      </View>
-
-      {/* Number of Drills */}
-      <View style={styles.section}>
-        <Stepper
-          label="Drills"
-          value={Math.min(numDrills, drillsMax)}
-          min={drillsMin}
-          max={drillsMax}
-          onChange={setNumDrills}
-        />
-        {drillsUpgradeHelps && (
-          <UpgradeBanner feature={`up to ${Math.min(6, proAvailable)} drills (only ${drillsMax} on Free)`} />
-        )}
-        {drillsCappedNoUpgrade && (
-          <View style={styles.capNote}>
-            <Text style={styles.capNoteText}>
-              Only {availableDrills} drill{availableDrills !== 1 ? 's' : ''} available for this age group.
-            </Text>
+        {/* Experience */}
+        <View style={styles.section}>
+          <View style={styles.expRow}>
+            <Stepper
+              label="Experience"
+              value={experience}
+              min={0}
+              max={5}
+              onChange={setExperience}
+            />
           </View>
-        )}
-      </View>
+          <Text style={styles.expLabel}>{EXPERIENCE_LABELS[experience]}</Text>
+        </View>
 
-      {/* Assistant Coaches */}
-      <View style={styles.section}>
-        <Stepper
-          label="Assistants"
-          value={assistants}
-          min={0}
-          max={3}
-          onChange={setAssistants}
-          locked={assistantsLocked}
-        />
-        {assistantsLocked && <UpgradeBanner feature="station splitting" />}
-      </View>
+        {/* Intensity */}
+        <View style={styles.section}>
+          <Stepper
+            label="Intensity"
+            value={intensity}
+            min={1}
+            max={5}
+            onChange={setIntensity}
+            locked={intensityLocked}
+          />
+          {intensityLocked && <UpgradeBanner feature="custom intensity" />}
+        </View>
 
-      {/* BUILD 68: Coach names now loaded from Staff Registry automatically */}
+        {/* Number of Drills */}
+        <View style={styles.section}>
+          <Stepper
+            label="Drills"
+            value={Math.min(numDrills, drillsMax)}
+            min={drillsMin}
+            max={drillsMax}
+            onChange={setNumDrills}
+          />
+          {drillsUpgradeHelps && (
+            <UpgradeBanner feature={`up to ${Math.min(6, proAvailable)} drills (only ${drillsMax} on Free)`} />
+          )}
+          {drillsCappedNoUpgrade && (
+            <View style={styles.capNote}>
+              <Text style={styles.capNoteText}>
+                Only {availableDrills} drill{availableDrills !== 1 ? 's' : ''} available for this age group.
+              </Text>
+            </View>
+          )}
+        </View>
 
-      {/* Go button - BUILD 59: Forest Green matching AI Lab */}
-      <TouchableOpacity style={styles.goButton} onPress={handleGo} activeOpacity={0.85}>
-        <Text style={styles.goText}>Go</Text>
-      </TouchableOpacity>
+        {/* Assistant Coaches */}
+        <View style={styles.section}>
+          <Stepper
+            label="Assistants"
+            value={assistants}
+            min={0}
+            max={3}
+            onChange={setAssistants}
+            locked={assistantsLocked}
+          />
+          {assistantsLocked && <UpgradeBanner feature="station splitting" />}
+        </View>
 
-      {/* BUILD 81: PaywallModal for History Gate */}
+        {/* BUILD 68: Coach names now loaded from Staff Registry automatically */}
+
+        {/* Go button - BUILD 59: Forest Green matching AI Lab */}
+        <TouchableOpacity style={styles.goButton} onPress={handleGo} activeOpacity={0.85}>
+          <Text style={styles.goText}>Go</Text>
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* BUILD 92: PaywallModal moved OUTSIDE ScrollView to prevent ghost modal freeze.
+          iOS pageSheet modals inside ScrollView can lose touch responder chain,
+          creating an invisible overlay that blocks all touches. */}
       <PaywallModal
         visible={showPaywall}
         onClose={closePaywall}
         onSuccess={closePaywall}
-        onReviewerBypass={setReviewerBypass}
         trigger={paywallTrigger ?? undefined}
       />
-    </ScrollView>
+    </>
   );
 }
 

@@ -1,5 +1,5 @@
 /**
- * BUILD 87: PaywallModal
+ * BUILD 90: PaywallModal
  *
  * Professional paywall for DiamondScript Pro subscription.
  * Clean, high end design with clear value proposition.
@@ -9,40 +9,36 @@
  * - Clear pricing: $9.99/month
  * - Restore purchases support
  * - Privacy first messaging
- *
- * BUILD 87: Reviewer Bypass
- * - Hidden 5-tap trigger on PRO badge
- * - Secret code input for App Store/Play Store reviewers
- * - Ephemeral session-only Pro access (not persisted)
+ * - Apple Guideline 3.1.2 compliant (disclosure + legal links)
  *
  * BUILD 86: Tiger Team Fixes
  * - Shows specific error messages from RevenueCat (displayMessage)
  * - Better error handling for Google Play billing errors
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   Modal,
   TouchableOpacity,
+  ScrollView,
   StyleSheet,
   ActivityIndicator,
   Alert,
-  TextInput,
+  Platform,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { initiateUpgrade, restorePurchases } from '../src/subscription/service';
 
-// BUILD 87: Reviewer bypass code (change annually)
-const REVIEWER_CODE = 'REVIEW_BYPASS_2026';
+const PRIVACY_URL = 'https://diamondscript.app/privacy';
+const TERMS_URL = 'https://diamondscript.app/terms';
 
 interface PaywallModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  /** BUILD 87: Direct tier override for app store reviewers */
-  onReviewerBypass?: () => void;
   /** Optional context for why the paywall was triggered */
   trigger?: 'ai_generator' | 'history_limit' | 'feature';
 }
@@ -51,104 +47,45 @@ export default function PaywallModal({
   visible,
   onClose,
   onSuccess,
-  onReviewerBypass,
   trigger,
 }: PaywallModalProps) {
   const insets = useSafeAreaInsets();
   const [isLoading, setIsLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
 
-  // BUILD 87: Reviewer bypass state
-  const [tapCount, setTapCount] = useState(0);
-  const [showBypassInput, setShowBypassInput] = useState(false);
-  const [bypassCode, setBypassCode] = useState('');
-
-  // BUILD 87: Reset bypass state when modal closes
-  useEffect(() => {
-    if (!visible) {
-      setTapCount(0);
-      setShowBypassInput(false);
-      setBypassCode('');
-    }
-  }, [visible]);
-
-  // BUILD 87: Handle taps on PRO badge (secret trigger)
-  const handleBadgeTap = () => {
-    const newCount = tapCount + 1;
-    setTapCount(newCount);
-    if (newCount >= 5) {
-      setShowBypassInput(true);
-    }
-  };
-
-  // BUILD 87: Handle reviewer bypass code submission
-  const handleBypassSubmit = () => {
-    if (bypassCode === REVIEWER_CODE) {
-      // Trigger the bypass callback if provided
-      if (onReviewerBypass) {
-        onReviewerBypass();
-      } else {
-        // Fallback: just call onSuccess (parent should handle tier)
-        onSuccess();
-      }
-      onClose();
-    } else {
-      Alert.alert('Invalid Code', 'The reviewer code is incorrect.');
-      setBypassCode('');
-    }
-  };
-
+  // BUILD 90: Pattern-match on typed UpgradeResult — no try/catch needed
   const handleUpgrade = async () => {
     setIsLoading(true);
-    try {
-      const success = await initiateUpgrade();
-      if (success) {
-        onSuccess();
-        onClose();
-      }
-    } catch (error: any) {
-      // BUILD 86: Show specific error message from RevenueCat
-      const errorMessage = error?.displayMessage ||
-        error?.underlyingErrorMessage ||
-        error?.message ||
-        'Something went wrong. Please try again or contact support.';
+    const result = await initiateUpgrade();
 
-      Alert.alert(
-        'Purchase Failed',
-        errorMessage,
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setIsLoading(false);
+    if (result.success) {
+      onSuccess();
+      onClose();
+    } else if (!result.userCancelled) {
+      // Show specific error message from RevenueCat
+      Alert.alert('Purchase Failed', result.message, [{ text: 'OK' }]);
     }
+    // userCancelled: silent — no alert needed
+    setIsLoading(false);
   };
 
+  // BUILD 90: Pattern-match on typed RestoreResult for clear UI feedback
   const handleRestore = async () => {
     setIsRestoring(true);
-    try {
-      const success = await restorePurchases();
-      if (success) {
-        Alert.alert(
-          'Purchases Restored',
-          'Your Pro subscription has been restored.',
-          [{ text: 'OK', onPress: () => { onSuccess(); onClose(); } }]
-        );
-      } else {
-        Alert.alert(
-          'No Purchases Found',
-          'We could not find any previous purchases associated with this device.',
-          [{ text: 'OK' }]
-        );
-      }
-    } catch (error) {
+    const result = await restorePurchases();
+
+    if (result.success) {
       Alert.alert(
-        'Restore Failed',
-        'Something went wrong. Please try again.',
-        [{ text: 'OK' }]
+        'Purchases Restored',
+        'Your Pro subscription has been restored.',
+        [{ text: 'OK', onPress: () => { onSuccess(); onClose(); } }]
       );
-    } finally {
-      setIsRestoring(false);
+    } else if (result.reason === 'none_found') {
+      Alert.alert('No Purchases Found', result.message, [{ text: 'OK' }]);
+    } else {
+      Alert.alert('Restore Failed', result.message, [{ text: 'OK' }]);
     }
+    setIsRestoring(false);
   };
 
   // Context-specific subtitle
@@ -169,8 +106,9 @@ export default function PaywallModal({
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
+      onDismiss={onClose}
     >
-      <View style={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
+      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + 16 }]}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
@@ -178,119 +116,111 @@ export default function PaywallModal({
           </TouchableOpacity>
         </View>
 
-        {/* Content */}
-        <View style={styles.content}>
-          {/* Pro Badge - BUILD 87: Secret tap trigger */}
-          <TouchableOpacity onPress={handleBadgeTap} activeOpacity={1}>
+        {/* Scrollable content area */}
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          {/* Content */}
+          <View style={styles.content}>
+            {/* Pro Badge */}
             <View style={styles.proBadge}>
               <Text style={styles.proBadgeText}>PRO</Text>
             </View>
-          </TouchableOpacity>
 
-          {/* Headline */}
-          <Text style={styles.headline}>DiamondScript Pro</Text>
-          <Text style={styles.subheadline}>Your AI Assistant Coach</Text>
+            {/* Headline */}
+            <Text style={styles.headline}>DiamondScript Pro</Text>
+            <Text style={styles.subheadline}>Your AI Assistant Coach</Text>
 
-          {/* Contextual subtitle */}
-          <Text style={styles.subtitle}>{getSubtitle()}</Text>
+            {/* Contextual subtitle */}
+            <Text style={styles.subtitle}>{getSubtitle()}</Text>
 
-          {/* BUILD 87: Hidden reviewer bypass input */}
-          {showBypassInput && (
-            <View style={styles.bypassContainer}>
-              <TextInput
-                style={styles.bypassInput}
-                value={bypassCode}
-                onChangeText={setBypassCode}
-                placeholder="Reviewer code"
-                placeholderTextColor="#9CA3AF"
-                autoCapitalize="characters"
-                autoCorrect={false}
-                secureTextEntry
-              />
-              <TouchableOpacity
-                style={styles.bypassButton}
-                onPress={handleBypassSubmit}
-              >
-                <Text style={styles.bypassButtonText}>Submit</Text>
+            {/* Benefits */}
+            <View style={styles.benefitsContainer}>
+              <View style={styles.benefitRow}>
+                <Text style={styles.benefitIcon}>⚡</Text>
+                <View style={styles.benefitTextContainer}>
+                  <Text style={styles.benefitTitle}>Pro Series Tactical Scripts</Text>
+                  <Text style={styles.benefitDescription}>
+                    Get intelligent practice plans customized for your age group and focus areas.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.benefitRow}>
+                <Text style={styles.benefitIcon}>📋</Text>
+                <View style={styles.benefitTextContainer}>
+                  <Text style={styles.benefitTitle}>Unlimited Season History</Text>
+                  <Text style={styles.benefitDescription}>
+                    Save and review every practice from your entire season.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.benefitRow}>
+                <Text style={styles.benefitIcon}>🎯</Text>
+                <View style={styles.benefitTextContainer}>
+                  <Text style={styles.benefitTitle}>Advanced Mechanical Cues</Text>
+                  <Text style={styles.benefitDescription}>
+                    Detailed coaching points and technique breakdowns for every drill.
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Price */}
+            <View style={styles.priceContainer}>
+              <Text style={styles.price}>$9.99</Text>
+              <Text style={styles.priceUnit}>/month</Text>
+            </View>
+          </View>
+
+          {/* Actions */}
+          <View style={styles.actions}>
+            {/* Upgrade Button */}
+            <TouchableOpacity
+              style={[styles.upgradeButton, isLoading && styles.buttonDisabled]}
+              onPress={handleUpgrade}
+              disabled={isLoading || isRestoring}
+              activeOpacity={0.85}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.upgradeButtonText}>Upgrade Now</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Restore Button */}
+            <TouchableOpacity
+              style={styles.restoreButton}
+              onPress={handleRestore}
+              disabled={isLoading || isRestoring}
+            >
+              {isRestoring ? (
+                <ActivityIndicator color="#1B4332" size="small" />
+              ) : (
+                <Text style={styles.restoreButtonText}>Restore Purchases</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Apple-required subscription disclosure (Guideline 3.1.2) */}
+            <Text style={styles.privacyFooter}>
+              $9.99/month. Subscription auto-renews monthly until cancelled.{'\n'}
+              Payment charged to your {Platform.OS === 'ios' ? 'Apple ID' : 'Google Play'} account. No sign-up required.
+            </Text>
+            <View style={styles.legalLinks}>
+              <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_URL)}>
+                <Text style={styles.legalLinkText}>Privacy Policy</Text>
+              </TouchableOpacity>
+              <Text style={styles.legalSeparator}>|</Text>
+              <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}>
+                <Text style={styles.legalLinkText}>Terms of Use</Text>
               </TouchableOpacity>
             </View>
-          )}
-
-          {/* Benefits */}
-          <View style={styles.benefitsContainer}>
-            <View style={styles.benefitRow}>
-              <Text style={styles.benefitIcon}>⚡</Text>
-              <View style={styles.benefitTextContainer}>
-                <Text style={styles.benefitTitle}>Pro Series Tactical Scripts</Text>
-                <Text style={styles.benefitDescription}>
-                  Get intelligent practice plans customized for your age group and focus areas.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.benefitRow}>
-              <Text style={styles.benefitIcon}>📋</Text>
-              <View style={styles.benefitTextContainer}>
-                <Text style={styles.benefitTitle}>Unlimited Season History</Text>
-                <Text style={styles.benefitDescription}>
-                  Save and review every practice from your entire season.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.benefitRow}>
-              <Text style={styles.benefitIcon}>🎯</Text>
-              <View style={styles.benefitTextContainer}>
-                <Text style={styles.benefitTitle}>Advanced Mechanical Cues</Text>
-                <Text style={styles.benefitDescription}>
-                  Detailed coaching points and technique breakdowns for every drill.
-                </Text>
-              </View>
-            </View>
           </View>
-
-          {/* Price */}
-          <View style={styles.priceContainer}>
-            <Text style={styles.price}>$9.99</Text>
-            <Text style={styles.priceUnit}>/month</Text>
-          </View>
-        </View>
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          {/* Upgrade Button */}
-          <TouchableOpacity
-            style={[styles.upgradeButton, isLoading && styles.buttonDisabled]}
-            onPress={handleUpgrade}
-            disabled={isLoading || isRestoring}
-            activeOpacity={0.85}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.upgradeButtonText}>Upgrade Now</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Restore Button */}
-          <TouchableOpacity
-            style={styles.restoreButton}
-            onPress={handleRestore}
-            disabled={isLoading || isRestoring}
-          >
-            {isRestoring ? (
-              <ActivityIndicator color="#1B4332" size="small" />
-            ) : (
-              <Text style={styles.restoreButtonText}>Restore Purchases</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Privacy Footer */}
-          <Text style={styles.privacyFooter}>
-            Managed anonymously via Google Play.{'\n'}
-            No account or password required.
-          </Text>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -301,10 +231,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
   closeButton: {
     width: 36,
@@ -320,17 +256,16 @@ const styles = StyleSheet.create({
     lineHeight: 26,
   },
   content: {
-    flex: 1,
     paddingHorizontal: 28,
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingBottom: 8,
   },
   proBadge: {
     backgroundColor: '#D4AF37',
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   proBadgeText: {
     color: '#FFFFFF',
@@ -340,7 +275,8 @@ const styles = StyleSheet.create({
   },
   headline: {
     fontSize: 28,
-    fontWeight: '800',
+    fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
     color: '#1B4332',
     textAlign: 'center',
     marginBottom: 4,
@@ -348,6 +284,7 @@ const styles = StyleSheet.create({
   subheadline: {
     fontSize: 18,
     fontWeight: '500',
+    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
     color: '#059669',
     textAlign: 'center',
     marginBottom: 12,
@@ -356,42 +293,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#6B7280',
     textAlign: 'center',
-    marginBottom: 28,
+    marginBottom: 32,
     lineHeight: 22,
-  },
-  // BUILD 87: Reviewer bypass styles
-  bypassContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    gap: 8,
-  },
-  bypassInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#111827',
-    backgroundColor: '#F9FAFB',
-  },
-  bypassButton: {
-    backgroundColor: '#6B7280',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  bypassButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
   },
   benefitsContainer: {
     width: '100%',
-    gap: 20,
-    marginBottom: 28,
+    gap: 24,
+    marginBottom: 32,
   },
   benefitRow: {
     flexDirection: 'row',
@@ -409,6 +317,7 @@ const styles = StyleSheet.create({
   benefitTitle: {
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
     color: '#111827',
     marginBottom: 3,
   },
@@ -420,11 +329,13 @@ const styles = StyleSheet.create({
   priceContainer: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginTop: 8,
+    marginTop: 4,
+    marginBottom: 8,
   },
   price: {
     fontSize: 42,
-    fontWeight: '800',
+    fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
     color: '#1B4332',
   },
   priceUnit: {
@@ -435,15 +346,18 @@ const styles = StyleSheet.create({
   },
   actions: {
     paddingHorizontal: 28,
-    gap: 12,
+    paddingTop: 24,
+    gap: 4,
   },
   upgradeButton: {
-    backgroundColor: '#1B4332',
+    backgroundColor: '#1B3D2F',
     paddingVertical: 18,
+    paddingHorizontal: 32,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#1B4332',
+    alignSelf: 'stretch',
+    shadowColor: '#1B3D2F',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -455,22 +369,41 @@ const styles = StyleSheet.create({
   upgradeButtonText: {
     color: '#FFFFFF',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
   },
   restoreButton: {
     paddingVertical: 14,
     alignItems: 'center',
   },
   restoreButtonText: {
-    color: '#1B4332',
+    color: '#1B3D2F',
     fontSize: 15,
     fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
   },
   privacyFooter: {
     fontSize: 12,
     color: '#9CA3AF',
     textAlign: 'center',
     lineHeight: 18,
-    marginTop: 8,
+    marginTop: 16,
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  legalLinkText: {
+    fontSize: 12,
+    color: '#6B7280',
+    textDecorationLine: 'underline',
+  },
+  legalSeparator: {
+    fontSize: 12,
+    color: '#D1D5DB',
   },
 });

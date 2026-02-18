@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
@@ -12,7 +13,7 @@ import { generateAIPracticePlan, convertAIPlanToPracticeSession } from '../../sr
 
 export default function AILabScreen() {
   const router = useRouter();
-  const { tier, importPractice, aiCooldownUntil, setAiCooldownUntil, openPaywall, showPaywall, paywallTrigger, closePaywall, setReviewerBypass } = usePractice();
+  const { tier, importPractice, aiCooldownUntil, setAiCooldownUntil, openPaywall, showPaywall, paywallTrigger, closePaywall } = usePractice();
 
   // Form state - BUILD 59: Restored Intensity (1-5) and Assistant Coaches
   const [ageGroup, setAgeGroup] = useState<AgeGroup>(AgeGroup.AGE_10U);
@@ -134,7 +135,7 @@ export default function AILabScreen() {
   const buttonState = getButtonState();
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -149,7 +150,10 @@ export default function AILabScreen() {
           >
             {/* Header - BUILD 59: Forest Green branding */}
             <View style={styles.header}>
-              <Text style={styles.headerTitle}>⚾ AI Lab</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="sparkles" size={24} color="#D4AF37" />
+                <Text style={styles.headerTitle}>AI Lab</Text>
+              </View>
               <Text style={styles.headerSubtitle}>
                 Generate custom practice plans powered by Gemini AI
               </Text>
@@ -310,7 +314,6 @@ export default function AILabScreen() {
         visible={showPaywall}
         onClose={closePaywall}
         onSuccess={closePaywall}
-        onReviewerBypass={setReviewerBypass}
         trigger={paywallTrigger ?? undefined}
       />
     </SafeAreaView>

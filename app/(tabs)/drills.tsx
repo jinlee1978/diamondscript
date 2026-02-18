@@ -334,7 +334,7 @@ export default function StarredScreen() {
   // ── Create form ──────────────────────────────────────────────────────
   if (isCreating) {
     return (
-      <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingBottom: insets.bottom }]}>
         <View style={styles.formBar}>
           <TouchableOpacity onPress={cancelCreate} disabled={isSaving}>
             <Text style={[styles.formBarCancel, isSaving && styles.formBarSaveDisabled]}>Cancel</Text>
@@ -399,7 +399,7 @@ export default function StarredScreen() {
   // ── Empty state ──────────────────────────────────────────────────────
   if (customDrills.length === 0 && starred.length === 0) {
     return (
-      <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
         <Text style={styles.emptyIcon}>{'\u2606'}</Text>
         <Text style={styles.emptyTitle}>No drills saved yet</Text>
         <Text style={styles.emptyBody}>
@@ -516,7 +516,7 @@ export default function StarredScreen() {
     <LocalErrorBoundary>
       <FlatList
         style={styles.scroll}
-        contentContainerStyle={[styles.listContent, { paddingTop: insets.top, paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 40 }]}
         data={drillItems}
         renderItem={renderDrillItem}
         keyExtractor={(item) => item.id}

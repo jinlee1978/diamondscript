@@ -40,7 +40,7 @@ import { generatePracticeSession } from '../src/core/engine/index';
 import { applyTierConstraints } from '../src/subscription/featureGate';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
 import { SubscriptionTier } from '../src/subscription/tiers';
-import { getSubscriptionInfo, initiateUpgrade, restorePurchases, addCustomerInfoListener, invalidateCustomerInfoCache, initializeRevenueCat } from '../src/subscription/service';
+import { getSubscriptionInfo, initiateUpgrade, restorePurchases, addCustomerInfoListener, invalidateCustomerInfoCache, initializeRevenueCat, UpgradeResult, RestoreResult } from '../src/subscription/service';
 import { useDrills, CustomDrill } from './DrillsContext';
 import { captureException } from '../src/config/sentry';
 import { flattenStationsToTimeline, manuallyAssignDrill as manuallyAssignDrillUtil } from '../src/logic/coachMatcher';
@@ -82,8 +82,8 @@ export type PaywallTrigger = 'ai_generator' | 'history_limit' | 'feature';
 interface PracticeContextValue {
   // From SubscriptionContext
   tier: 'free' | 'pro';
-  upgradeToPro: () => Promise<boolean>;
-  restorePurchases: () => Promise<boolean>;
+  upgradeToPro: () => Promise<UpgradeResult>;
+  restorePurchases: () => Promise<RestoreResult>;
   // BUILD 81: Paywall state
   showPaywall: boolean;
   paywallTrigger: PaywallTrigger | null;
@@ -123,8 +123,6 @@ interface PracticeContextValue {
   setAiCooldownUntil: (timestamp: number) => void;
   // BUILD 74: Coach notes for post-practice reflection
   updateCoachNote: (savedAt: number, note: string) => void;
-  // BUILD 87: Reviewer bypass - directly sets tier to PRO for app store reviewers
-  setReviewerBypass: () => void;
 }
 
 const PracticeContext = createContext<PracticeContextValue | null>(null);
@@ -698,6 +696,13 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
 
+    // BUILD 93: Sanitize imported session tier to prevent Free→Pro bypass
+    // If a Free user imports a Pro session and resets to engine order,
+    // the engine would otherwise use the Pro tier from the original request
+    if (session.request) {
+      session = { ...session, request: { ...session.request, subscriptionTier: tier } };
+    }
+
     // BUILD 70: Ensure timeline exists when importing
     let sessionWithTimeline = session;
     if (!session.timeline && session.stationLayout) {
@@ -766,41 +771,16 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
    * verifies the purchase. This prevents "Ghost Pro" from premature
    * state changes.
    */
-  const upgradeToPro = useCallback(async (): Promise<boolean> => {
-    try {
-      const success = await initiateUpgrade();
-      // DO NOT setTier here - CustomerInfo listener handles it
-      // after RevenueCat verifies the purchase server-side
-      return success;
-    } catch (error) {
-      captureException(error as Error, { context: 'upgrade_initiation' });
-      throw error;
-    }
+  // BUILD 90: Pass-through typed results — no try/catch needed.
+  // DO NOT setTier here — CustomerInfo listener handles it
+  // after RevenueCat verifies the purchase server-side.
+  const upgradeToPro = useCallback(async (): Promise<UpgradeResult> => {
+    return initiateUpgrade();
   }, []);
 
-  const handleRestorePurchases = useCallback(async (): Promise<boolean> => {
-    try {
-      const success = await restorePurchases();
-      // DO NOT setTier here - CustomerInfo listener handles it
-      return success;
-    } catch (error) {
-      captureException(error as Error, { context: 'restore_purchases' });
-      return false;
-    }
+  const handleRestorePurchases = useCallback(async (): Promise<RestoreResult> => {
+    return restorePurchases();
   }, []);
-
-  /**
-   * BUILD 87: Reviewer Bypass - Direct tier override for app store reviewers
-   *
-   * This bypasses RevenueCat entirely and sets tier to PRO in memory only.
-   * - Session-only (not persisted)
-   * - Triggered via hidden 5-tap + secret code in PaywallModal
-   * - For App Store / Play Store review access
-   */
-  const setReviewerBypass = useCallback(() => {
-    setTier(SubscriptionTier.PRO);
-    closePaywall();
-  }, [closePaywall]);
 
   return (
     <PracticeContext.Provider
@@ -845,8 +825,6 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
         setAiCooldownUntil,
         // BUILD 74: Coach Notes
         updateCoachNote,
-        // BUILD 87: Reviewer Bypass
-        setReviewerBypass,
       }}
     >
       {children}

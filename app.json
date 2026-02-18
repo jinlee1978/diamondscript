@@ -1,6 +1,5 @@
 {
   "expo": {
-    "main": "node_modules/expo-router/entry.js",
     "name": "DiamondScript",
     "slug": "diamondscript",
     "version": "1.0.7",
@@ -15,13 +14,12 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.diamondscript.app",
-      "buildNumber": "1",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
-          "itms-apps",
           "itms-apps"
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIDesignRequiresCompatibility": true
       }
     },
     "android": {
@@ -30,8 +28,9 @@
         "backgroundColor": "#1B4332"
       },
       "package": "com.diamondscript.app",
-      "versionCode": 89,
-      "permissions": ["com.android.vending.BILLING"]
+      "permissions": [
+        "com.android.vending.BILLING"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -39,14 +38,14 @@
         "expo-build-properties",
         {
           "android": {
-            "targetSdkVersion": 35,
-            "newArchEnabled": false
+            "targetSdkVersion": 35
           },
           "ios": {
-            "newArchEnabled": false
+            "deploymentTarget": "16.0"
           }
         }
-      ]
+      ],
+      "@sentry/react-native"
     ],
     "updates": {
       "fallbackToCacheTimeout": 0

@@ -1,33 +1,50 @@
 {
   "cli": {
-    "version": ">= 10.0.0"
+    "version": ">= 10.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "cache": {
+        "disabled": true
+      }
     },
     "preview": {
       "distribution": "internal",
+      "cache": {
+        "disabled": true
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
       "resourceClass": "large",
+      "autoIncrement": true,
       "cache": {
         "disabled": true
       },
       "android": {
         "buildType": "app-bundle"
       },
+      "ios": {
+        "image": "latest",
+        "resourceClass": "large",
+        "autoIncrement": true
+      },
       "env": {
-        "EAS_BUILD_CACHE_BREAKER": "BUILD_89_PRODUCTION_HARDENED",
-        "NODE_ENV": "production"
+        "EAS_BUILD_CACHE_BREAKER": "SDK54_POD_FIX",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6758865737"
+      }
+    }
   }
 }

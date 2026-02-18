@@ -12,13 +12,13 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { SubscriptionTier } from '../src/subscription/tiers';
-import { getSubscriptionInfo, initiateUpgrade, restorePurchases } from '../src/subscription/service';
+import { getSubscriptionInfo, initiateUpgrade, restorePurchases, UpgradeResult, RestoreResult } from '../src/subscription/service';
 import config from '../src/config/env';
 
 interface SubscriptionContextValue {
   tier: SubscriptionTier;
-  upgradeToPro: () => Promise<boolean>;
-  restorePurchases: () => Promise<boolean>;
+  upgradeToPro: () => Promise<UpgradeResult>;
+  restorePurchases: () => Promise<RestoreResult>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextValue | null>(null);
@@ -50,24 +50,22 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     };
   }, []);
 
-  const upgradeToPro = useCallback(async (): Promise<boolean> => {
-    const success = await initiateUpgrade();
-    if (success) {
-      // Reload subscription info to update tier
+  const upgradeToPro = useCallback(async (): Promise<UpgradeResult> => {
+    const result = await initiateUpgrade();
+    if (result.success) {
       const info = await getSubscriptionInfo();
       setTier(info.tier);
     }
-    return success;
+    return result;
   }, []);
 
-  const handleRestorePurchases = useCallback(async (): Promise<boolean> => {
-    const success = await restorePurchases();
-    if (success) {
-      // Reload subscription info to update tier
+  const handleRestorePurchases = useCallback(async (): Promise<RestoreResult> => {
+    const result = await restorePurchases();
+    if (result.success) {
       const info = await getSubscriptionInfo();
       setTier(info.tier);
     }
-    return success;
+    return result;
   }, []);
 
   return (

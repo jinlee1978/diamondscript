@@ -389,7 +389,7 @@ export default function PracticeScreen() {
         ),
       }}
     />
-    <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingBottom: insets.bottom }]}>
       {/* Header summary */}
       <View style={styles.summary}>
         <Text style={styles.summaryAge}>{formatAgeGroup(request.ageGroup)}</Text>

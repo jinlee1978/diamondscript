@@ -1,12 +1,17 @@
 /**
- * BUILD 89: RevenueCat Purchase Service for DiamondScript
+ * BUILD 90: RevenueCat Purchase Service for DiamondScript
  *
- * PRODUCTION-READY CONFIGURATION
- * ==============================
+ * CROSS-PLATFORM PRODUCTION CONFIGURATION
+ * ========================================
  *
- * Build 89 (Production Hardening):
+ * Build 90 (Store Submission Readiness):
+ * - Cross-platform API keys via Platform.select (iOS + Android)
+ * - Supabase identity linking via Purchases.logIn()
+ * - RestoreResult type for UI-actionable restore feedback
+ * - UpgradeResult type for UI-actionable purchase feedback
+ *
+ * Build 89 (retained):
  * - Log level set to ERROR (minimal logging for production)
- * - All debug/verbose logging removed
  * - RevenueCat is the SOLE source of truth for subscription status
  *
  * Build 87 Critical Fix (retained):
@@ -20,22 +25,23 @@
  * - No optimistic tier updates - rely on CustomerInfo listener
  *
  * Configuration:
- * - API Key: Production goog_ key for Play Store
+ * - API Keys: Platform-specific (appl_ for iOS, goog_ for Android)
  * - Entitlement ID: "pro"
  * - Package ID: $rc_monthly (RevenueCat standard monthly package)
- * - Anonymous IDs (zero login required)
+ * - Identity: Supabase anonymous ID linked to RevenueCat appUserID
  * - NEVER fail open: All errors default to FREE tier
  */
 
+import { Platform } from 'react-native';
 import Purchases, { CustomerInfo, PurchasesOffering } from 'react-native-purchases';
 import { SubscriptionTier } from './tiers';
 import { captureException, captureMessage } from '../config/sentry';
 
-// BUILD 86: RevenueCat production configuration
-export const REVENUECAT_API_KEY = 'goog_CMmqJFvawEGkJUbJQmuVdyqwFHG';
-
-// BUILD 89: Production logging - ERROR level only (no verbose debug logs)
-Purchases.setLogLevel(Purchases.LOG_LEVEL.ERROR);
+// BUILD 90: Cross-platform RevenueCat API keys
+export const REVENUECAT_API_KEY = Platform.select({
+  ios: 'appl_PxYRGXlkPDWerPadHxEANPomTEs',
+  android: 'goog_CMmqJFvawEGkJUbJQmuVdyqwFHG',
+}) as string;
 
 const ENTITLEMENT_ID = 'pro';
 
@@ -43,47 +49,72 @@ const ENTITLEMENT_ID = 'pro';
 let isConfigured = false;
 let configurationPromise: Promise<void> | null = null;
 
+// BUILD 90: Track whether Supabase identity has been linked
+let hasIdentified = false;
+
 /**
- * BUILD 86: Initialize RevenueCat SDK with Promise-based locking
+ * BUILD 90: Initialize RevenueCat SDK with optional Supabase identity linking
  *
  * Key improvements:
  * - Returns same Promise if called multiple times during init
  * - Prevents race conditions between _layout.tsx and PracticeContext
  * - Allows retry on failure (clears promise on error)
+ * - Links Supabase anonymous user ID to RevenueCat appUserID (once)
+ *
+ * @param supabaseUserId - Optional Supabase anonymous user ID.
+ *   When provided, calls Purchases.logIn() to unify the identity
+ *   across RevenueCat and Supabase for server-side entitlement checks.
  */
-export async function initializeRevenueCat(): Promise<void> {
-  // Already configured - return immediately
-  if (isConfigured) {
-    return;
-  }
+export async function initializeRevenueCat(supabaseUserId?: string): Promise<void> {
+  // Step 1: Configure SDK (with promise-based locking)
+  if (!isConfigured) {
+    if (!configurationPromise) {
+      configurationPromise = (async () => {
+        try {
+          // BUILD 91: Set log level INSIDE init (was module-scope — crashed Hermes GC)
+          Purchases.setLogLevel(Purchases.LOG_LEVEL.ERROR);
 
-  // Configuration in progress - return existing promise
-  if (configurationPromise) {
-    return configurationPromise;
-  }
+          console.log('[RevenueCat] Starting SDK configuration...');
+          console.log('[RevenueCat] Platform:', Platform.OS);
+          console.log('[RevenueCat] API Key:', REVENUECAT_API_KEY.substring(0, 10) + '...');
 
-  // Start new configuration
-  configurationPromise = (async () => {
-    try {
-      console.log('[RevenueCat] Starting SDK configuration...');
-      console.log('[RevenueCat] API Key:', REVENUECAT_API_KEY.substring(0, 10) + '...');
-
-      // Purchases.configure is synchronous but we wrap in async for consistency
-      Purchases.configure({
-        apiKey: REVENUECAT_API_KEY,
-      });
-      isConfigured = true;
-      console.log('[RevenueCat] Initialized successfully');
-    } catch (error) {
-      // Clear promise to allow retry on next call
-      configurationPromise = null;
-      console.error('[RevenueCat] Initialization failed:', error);
-      captureException(error as Error, { context: 'revenuecat_init' });
-      throw error; // Propagate error so callers know init failed
+          Purchases.configure({
+            apiKey: REVENUECAT_API_KEY,
+          });
+          isConfigured = true;
+          console.log('[RevenueCat] Initialized successfully');
+        } catch (error) {
+          // Clear promise to allow retry on next call
+          configurationPromise = null;
+          console.error('[RevenueCat] Initialization failed:', error);
+          captureException(error as Error, { context: 'revenuecat_init' });
+          throw error; // Propagate error so callers know init failed
+        }
+      })();
     }
-  })();
+    await configurationPromise;
+  }
 
-  return configurationPromise;
+  // Step 2: Link Supabase identity (only once, non-fatal)
+  // This makes the Supabase anonymous user ID the RevenueCat appUserID,
+  // enabling server-side entitlement lookups via the RevenueCat REST API.
+  if (supabaseUserId && !hasIdentified) {
+    try {
+      const { customerInfo } = await Purchases.logIn(supabaseUserId);
+      hasIdentified = true;
+      console.log('[RevenueCat] Identified with Supabase user:', supabaseUserId.substring(0, 8) + '...');
+
+      // Check if the linked account already has Pro (e.g., restored from another device)
+      const hasPro = customerInfo.entitlements.active[ENTITLEMENT_ID] != null;
+      if (hasPro) {
+        console.log('[RevenueCat] Linked account already has Pro entitlement');
+      }
+    } catch (error) {
+      captureException(error as Error, { context: 'revenuecat_identity_link' });
+      console.warn('[RevenueCat] Identity linking failed (non-fatal):', error);
+      // Non-fatal: purchases still work with RevenueCat's anonymous ID
+    }
+  }
 }
 
 /**
@@ -127,13 +158,38 @@ export async function getSubscriptionInfo(): Promise<PurchaseInfo> {
   }
 }
 
+// ============================================================
+// BUILD 90: Typed result objects for UI-actionable feedback
+// ============================================================
+
 /**
- * BUILD 86: Initiate monthly Pro subscription ($9.99/month)
+ * Result from initiateUpgrade().
+ * Discriminated union lets the UI render the right message for each case.
+ */
+export type UpgradeResult =
+  | { success: true }
+  | { success: false; userCancelled: true }
+  | { success: false; userCancelled: false; message: string };
+
+/**
+ * Result from restorePurchases().
+ * Lets the UI distinguish "nothing to restore" from "something went wrong."
+ */
+export type RestoreResult =
+  | { success: true }
+  | { success: false; reason: 'none_found'; message: string }
+  | { success: false; reason: 'error'; message: string };
+
+/**
+ * BUILD 90: Initiate monthly Pro subscription ($9.99/month)
+ *
+ * Returns a typed UpgradeResult instead of throwing, so callers can
+ * pattern-match on the result without try/catch.
  *
  * IMPORTANT: Does NOT set tier directly. Relies on CustomerInfo listener
  * to update tier after purchase is verified by RevenueCat.
  */
-export async function initiateUpgrade(): Promise<boolean> {
+export async function initiateUpgrade(): Promise<UpgradeResult> {
   console.log('[RevenueCat] ========== PURCHASE FLOW START ==========');
   console.log('[RevenueCat] Initiating Pro subscription flow');
 
@@ -142,7 +198,11 @@ export async function initiateUpgrade(): Promise<boolean> {
     console.log('[RevenueCat] SDK initialized, isConfigured:', isConfigured);
 
     if (!isConfigured) {
-      throw new Error('RevenueCat SDK failed to initialize. Please check your internet connection.');
+      return {
+        success: false,
+        userCancelled: false,
+        message: 'RevenueCat SDK failed to initialize. Please check your internet connection.',
+      };
     }
 
     console.log('[RevenueCat] Fetching offerings...');
@@ -150,7 +210,7 @@ export async function initiateUpgrade(): Promise<boolean> {
     console.log('[RevenueCat] Offerings received:', JSON.stringify({
       hasCurrent: !!offerings.current,
       currentIdentifier: offerings.current?.identifier,
-      availablePackages: offerings.current?.availablePackages.map(p => ({
+      availablePackages: offerings.current?.availablePackages.map((p: any) => ({
         identifier: p.identifier,
         packageType: p.packageType,
         productId: p.product.identifier,
@@ -158,23 +218,29 @@ export async function initiateUpgrade(): Promise<boolean> {
     }, null, 2));
 
     if (!offerings.current) {
-      const error = new Error('No subscription offerings available');
       captureMessage('No RevenueCat offering found', 'error');
-      throw error;
+      return {
+        success: false,
+        userCancelled: false,
+        message: 'No subscription offerings are currently available. Please try again later.',
+      };
     }
 
     // Find the monthly subscription package
     const monthlyPkg = offerings.current.monthly ||
       offerings.current.availablePackages.find(
-        (p) => p.packageType === 'MONTHLY'
+        (p: any) => p.packageType === 'MONTHLY'
       );
 
     if (!monthlyPkg) {
       console.error('[RevenueCat] Monthly package NOT FOUND in offerings');
       console.error('[RevenueCat] Available packages:', offerings.current.availablePackages);
-      const error = new Error('Monthly subscription package not found');
       captureMessage('Monthly package not found in offerings', 'error');
-      throw error;
+      return {
+        success: false,
+        userCancelled: false,
+        message: 'Monthly subscription package not found. Please try again later.',
+      };
     }
 
     console.log('[RevenueCat] Monthly package found:', {
@@ -194,15 +260,22 @@ export async function initiateUpgrade(): Promise<boolean> {
 
     if (success) {
       captureMessage('Pro subscription completed', 'info');
+      console.log('[RevenueCat] ========== PURCHASE FLOW END ==========');
+      return { success: true };
     }
 
+    // Purchase went through but entitlement not active yet (rare edge case)
     console.log('[RevenueCat] ========== PURCHASE FLOW END ==========');
-    return success;
+    return {
+      success: false,
+      userCancelled: false,
+      message: 'Purchase completed but Pro access is still being activated. Please restart the app.',
+    };
   } catch (error: any) {
     // Swallow user cancellation (not an error)
     if (error?.userCancelled) {
       console.log('[RevenueCat] User cancelled purchase');
-      return false;
+      return { success: false, userCancelled: true };
     }
 
     // BUILD 88: ENHANCED ERROR LOGGING
@@ -224,31 +297,44 @@ export async function initiateUpgrade(): Promise<boolean> {
       }
     });
 
-    // Attach the specific error message for UI display
-    const errorMessage = error?.underlyingErrorMessage || error?.message || 'Unknown purchase error';
-    error.displayMessage = errorMessage;
-    throw error;
+    const message = error?.underlyingErrorMessage || error?.message || 'An unexpected error occurred. Please try again.';
+    return { success: false, userCancelled: false, message };
   }
 }
 
 /**
- * Restore purchases (cross-device purchase recovery)
+ * BUILD 90: Restore purchases with typed result for UI feedback.
+ *
+ * Apple requires a visible "Restore Purchases" button. The result type
+ * lets the UI show the right message:
+ * - success: "Your Pro subscription has been restored!"
+ * - none_found: "No previous purchases found for this account."
+ * - error: "Something went wrong. Please check your connection and try again."
  */
-export async function restorePurchases(): Promise<boolean> {
+export async function restorePurchases(): Promise<RestoreResult> {
   try {
     await initializeRevenueCat();
 
     const customerInfo = await Purchases.restorePurchases();
-    const success = customerInfo.entitlements.active[ENTITLEMENT_ID] != null;
+    const hasPro = customerInfo.entitlements.active[ENTITLEMENT_ID] != null;
 
-    if (success) {
+    if (hasPro) {
       captureMessage('Pro subscription restored', 'info');
+      return { success: true };
     }
 
-    return success;
+    return {
+      success: false,
+      reason: 'none_found',
+      message: 'No previous purchases found for this account.',
+    };
   } catch (error) {
     captureException(error as Error, { context: 'restore_purchases' });
-    return false;
+    return {
+      success: false,
+      reason: 'error',
+      message: 'Unable to restore purchases. Please check your connection and try again.',
+    };
   }
 }
 

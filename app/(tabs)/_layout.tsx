@@ -1,38 +1,45 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+const BRAND_GREEN = '#1B3D2F';
+const FONT_ROUNDED = Platform.select({ ios: 'ui-rounded', default: undefined });
+
 function TabsContent() {
-  // BUILD 60: DYNAMIC HARDWARE AWARENESS
-  // This hook queries the device OS for the exact notch/home-bar dimensions
   const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
-        // Apply dynamic top inset to prevent hardware overlap
+        headerShown: true,
+        headerTransparent: false,
+        headerStyle: { backgroundColor: BRAND_GREEN },
+        headerTintColor: '#FFFFFF',
+        headerShadowVisible: false,
+        headerTitleStyle: {
+          fontFamily: FONT_ROUNDED,
+          fontWeight: '600',
+        },
+        headerLeftContainerStyle: { paddingHorizontal: 16 },
+        headerRightContainerStyle: { paddingHorizontal: 16 },
         headerStatusBarHeight: insets.top,
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
-          // Dynamic height based on device hardware
+          borderTopWidth: 0,
           height: 60 + insets.bottom,
           paddingBottom: insets.bottom,
           paddingTop: 10,
-          elevation: 8,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 8,
+          elevation: 0,
+          shadowOpacity: 0,
         },
-        tabBarActiveTintColor: '#1B4332', // Forest Green
+        tabBarActiveTintColor: '#1B4332',
         tabBarInactiveTintColor: '#9CA3AF',
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
+          fontFamily: FONT_ROUNDED,
           marginTop: 4,
         },
         tabBarIconStyle: {

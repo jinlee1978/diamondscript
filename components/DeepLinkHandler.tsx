@@ -13,7 +13,7 @@ import { parseShareLink } from '../src/utils/practiceSerializer';
 
 export default function DeepLinkHandler() {
   const router = useRouter();
-  const { restoreSession } = usePractice();
+  const { importPractice } = usePractice();
 
   useEffect(() => {
     // Handle initial URL if app was opened from a deep link
@@ -59,11 +59,12 @@ export default function DeepLinkHandler() {
         return;
       }
 
-      // Restore the session into app state
-      restoreSession(session);
-
-      // Navigate to the practice screen
-      router.push('/practice');
+      // BUILD 93: Use importPractice (not restoreSession) so deep links
+      // persist to history and respect Free tier limits
+      const success = importPractice(session);
+      if (success) {
+        router.push('/practice');
+      }
 
       if (__DEV__) {
         console.log('✅ Practice session loaded from deep link');
