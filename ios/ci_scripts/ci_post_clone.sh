@@ -1,15 +1,14 @@
 #!/bin/sh
 set -e
 
-# 1. Move to the project root (up two levels from ios/ci_scripts)
+# 1. Move to project root
 cd ../..
 
-# 2. Install Node and CocoaPods
+# 2. Automate the build number using the Xcode Cloud Environment Variable
+# This ensures the version in the cloud matches the Build Number Apple expects
+agvtool new-version -all $CI_BUILD_NUMBER
+
+# 3. Standard setup
 brew install node cocoapods
-
-# 3. Install your JS dependencies
 npm install
-
-# 4. Install the iOS specific pods
-cd ios
-pod install
+cd ios && pod install
