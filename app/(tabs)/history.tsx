@@ -11,7 +11,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
   View, Text, SectionList, TouchableOpacity, StyleSheet,
-  TextInput, Share, Alert, KeyboardAvoidingView, Platform, ScrollView,
+  TextInput, Share, Alert, KeyboardAvoidingView, Platform, ScrollView, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -129,6 +129,9 @@ export default function HistoryScreen() {
   const [editingNotes, setEditingNotes] = useState<Record<number, string>>({});
   const [expandedNote, setExpandedNote] = useState<number | null>(null);
 
+  // Share preview modal
+  const [shareSession, setShareSession] = useState<PracticeSession | null>(null);
+
   const handleNoteChange = useCallback((savedAt: number, text: string) => {
     setEditingNotes(prev => ({ ...prev, [savedAt]: text }));
   }, []);
@@ -140,23 +143,29 @@ export default function HistoryScreen() {
     }
   }, [editingNotes, updateCoachNote]);
 
-  // Share
-  const handleSharePractice = useCallback(async (session: PracticeSession) => {
+  // Share — opens preview modal first
+  const handleSharePractice = useCallback((session: PracticeSession) => {
+    setShareSession(session);
+  }, []);
+
+  const executeShare = useCallback(async () => {
+    if (!shareSession) return;
     try {
-      const ageLabel = formatAgeGroupShort(session.request.ageGroup);
-      const drillCount = session.selectedDrills.length;
-      const duration = session.stationLayout.totalWallClockMinutes;
+      const ageLabel = formatAgeGroupShort(shareSession.request.ageGroup);
+      const drillCount = shareSession.selectedDrills.length;
+      const duration = shareSession.stationLayout.totalWallClockMinutes;
       const shareData = {
         type: 'practice',
         ageGroup: ageLabel,
         totalMinutes: duration,
-        coachCount: (session.coachNames?.length ?? 1),
-        session,
+        coachCount: (shareSession.coachNames?.length ?? 1),
+        session: shareSession,
       };
       const shareMessage = `Check out this practice from DiamondScript:\n\n${ageLabel} \u2022 ${drillCount} drills \u2022 ${duration} min\n\nCopy this message to import it!\n\n{DIAMONDSCRIPT_DATA:${JSON.stringify(shareData)}}`;
       await Share.share({ message: shareMessage });
+      setShareSession(null);
     } catch { /* cancelled */ }
-  }, []);
+  }, [shareSession]);
 
   // Delete confirmation
   const handleDelete = useCallback((savedAt: number) => {
@@ -443,14 +452,11 @@ export default function HistoryScreen() {
         ]} />
 
         <View style={styles.cardBody}>
-          {/* Top row: age group label + source badge + actions */}
+          {/* Top row: age group label + actions (no overlap) */}
           <View style={styles.cardTopRow}>
-            <View style={styles.cardTitleArea}>
-              <Text style={styles.cardTitle} numberOfLines={1}>
-                {formatAgeGroup(session.request.ageGroup)}
-              </Text>
-              {session.source && <SourceBadge source={session.source} size="small" />}
-            </View>
+            <Text style={styles.cardTitle} numberOfLines={1}>
+              {formatAgeGroup(session.request.ageGroup)}
+            </Text>
             <View style={styles.cardActions}>
               <View onStartShouldSetResponder={() => true}>
                 <TouchableOpacity
@@ -470,6 +476,12 @@ export default function HistoryScreen() {
               </View>
             </View>
           </View>
+          {/* Source badge on its own row */}
+          {session.source && (
+            <View style={styles.cardSourceRow}>
+              <SourceBadge source={session.source} size="small" />
+            </View>
+          )}
 
           {/* Stats row with icons */}
           <View style={styles.cardStatsRow}>
@@ -613,6 +625,62 @@ export default function HistoryScreen() {
         windowSize={5}
         keyboardShouldPersistTaps="handled"
       />
+
+      {/* Share Preview Modal */}
+      {shareSession && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setShareSession(null)}>
+          <TouchableOpacity
+            style={styles.shareBackdrop}
+            activeOpacity={1}
+            onPress={() => setShareSession(null)}
+          >
+            <View style={styles.shareSheet} onStartShouldSetResponder={() => true}>
+              <View style={styles.shareIconCircle}>
+                <Ionicons name="share-outline" size={24} color="#1B4332" />
+              </View>
+
+              <Text style={styles.shareTitle}>Share Practice Plan</Text>
+
+              <View style={styles.shareSummary}>
+                <Text style={styles.shareSummaryLabel}>
+                  {formatAgeGroup(shareSession.request.ageGroup)}
+                </Text>
+                <Text style={styles.shareSummaryMeta}>
+                  {shareSession.stationLayout?.totalWallClockMinutes ?? 0} min  {'\u2022'}  {shareSession.selectedDrills?.length ?? 0} drills  {'\u2022'}  {shareSession.coachNames?.length ?? 1} coach{(shareSession.coachNames?.length ?? 1) !== 1 ? 'es' : ''}
+                </Text>
+              </View>
+
+              <View style={styles.shareDivider} />
+
+              <Text style={styles.shareHowTitle}>How it works</Text>
+
+              <View style={styles.shareSteps}>
+                <View style={styles.shareStep}>
+                  <View style={styles.shareStepDot}><Text style={styles.shareStepNum}>1</Text></View>
+                  <Text style={styles.shareStepText}>Send via text, email, or any app</Text>
+                </View>
+                <View style={styles.shareStep}>
+                  <View style={styles.shareStepDot}><Text style={styles.shareStepNum}>2</Text></View>
+                  <Text style={styles.shareStepText}>Other coach copies the message</Text>
+                </View>
+                <View style={styles.shareStep}>
+                  <View style={styles.shareStepDot}><Text style={styles.shareStepNum}>3</Text></View>
+                  <Text style={styles.shareStepText}>Plan imports automatically in DiamondScript</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity style={styles.shareButton} onPress={executeShare} activeOpacity={0.85}>
+                <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.shareButtonText}>Share Now</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.shareCancel} onPress={() => setShareSession(null)}>
+                <Text style={styles.shareCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -756,12 +824,12 @@ const styles = StyleSheet.create({
 
   // Card top row
   cardTopRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: 8,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 4,
   },
-  cardTitleArea: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  cardActions: { flexDirection: 'row', gap: 12, marginLeft: 8 },
+  cardTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: '#111827' },
+  cardActions: { flexDirection: 'row', gap: 14, marginLeft: 12, flexShrink: 0 },
+  cardSourceRow: { marginBottom: 8 },
 
   // Card stats
   cardStatsRow: {
@@ -818,4 +886,47 @@ const styles = StyleSheet.create({
   },
   upgradeNoteText: { fontSize: 14, color: '#92400E' },
   upgradeNoteBold: { fontWeight: '700' },
+
+  // ── Share Preview Modal ──
+  shareBackdrop: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  shareSheet: {
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 28, paddingBottom: 36, alignItems: 'center',
+  },
+  shareIconCircle: {
+    width: 52, height: 52, borderRadius: 26, backgroundColor: '#ECFDF5',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 14,
+  },
+  shareTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 12 },
+  shareSummary: {
+    backgroundColor: '#F9FAFB', borderRadius: 12, padding: 14,
+    alignItems: 'center', width: '100%', marginBottom: 16,
+  },
+  shareSummaryLabel: { fontSize: 15, fontWeight: '700', color: '#1B4332', marginBottom: 4 },
+  shareSummaryMeta: { fontSize: 13, color: '#6B7280' },
+  shareDivider: { height: 1, backgroundColor: '#F3F4F6', width: '100%', marginBottom: 16 },
+  shareHowTitle: {
+    fontSize: 13, fontWeight: '600', color: '#9CA3AF',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    alignSelf: 'flex-start', marginBottom: 12,
+  },
+  shareSteps: { width: '100%', gap: 10, marginBottom: 20 },
+  shareStep: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  shareStepDot: {
+    width: 24, height: 24, borderRadius: 12, backgroundColor: '#ECFDF5',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  shareStepNum: { fontSize: 12, fontWeight: '700', color: '#1B4332' },
+  shareStepText: { fontSize: 14, color: '#374151', flex: 1 },
+  shareButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#1B4332', borderRadius: 14,
+    paddingVertical: 15, width: '100%', marginBottom: 10,
+  },
+  shareButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  shareCancel: { paddingVertical: 8 },
+  shareCancelText: { fontSize: 15, fontWeight: '600', color: '#6B7280' },
 });
