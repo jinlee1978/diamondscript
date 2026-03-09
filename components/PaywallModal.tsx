@@ -32,8 +32,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { initiateUpgrade, restorePurchases } from '../src/subscription/service';
 
-const PRIVACY_URL = 'https://diamondscript.app/privacy';
-const TERMS_URL = 'https://diamondscript.app/terms';
+const PRIVACY_URL = 'https://jinlee1978.github.io/diamondscript/privacy/';
+const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 
 interface PaywallModalProps {
   visible: boolean;

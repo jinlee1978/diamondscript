@@ -117,11 +117,11 @@ export default function UpgradeScreen() {
         </TouchableOpacity>
 
         <View style={styles.legalRow}>
-          <TouchableOpacity onPress={() => Linking.openURL('https://diamondscript.app/privacy')}>
+          <TouchableOpacity onPress={() => Linking.openURL('https://jinlee1978.github.io/diamondscript/privacy/')}>
             <Text style={styles.legalText}>Privacy Policy</Text>
           </TouchableOpacity>
           <Text style={styles.legalSep}>|</Text>
-          <TouchableOpacity onPress={() => Linking.openURL('https://diamondscript.app/terms')}>
+          <TouchableOpacity onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
             <Text style={styles.legalText}>Terms of Use</Text>
           </TouchableOpacity>
         </View>

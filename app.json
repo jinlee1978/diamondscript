@@ -21,7 +21,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "UIDesignRequiresCompatibility": true
       },
-      "buildNumber": "4"
+      "buildNumber": "6"
     },
     "android": {
       "adaptiveIcon": {
@@ -29,7 +29,7 @@
         "backgroundColor": "#1B4332"
       },
       "package": "com.diamondscript.app",
-      "versionCode": 94,
+      "versionCode": 96,
       "permissions": [
         "com.android.vending.BILLING"
       ]
