@@ -7,10 +7,10 @@ Code that touches these domains references these definitions — never hardcodes
 
 ## Subscription Tiers
 
-| Tier | Price    | Drill Catalog   | Custom Intensity | Station Splitting | Practice History |
-|------|----------|-----------------|------------------|-------------------|------------------|
-| Free | $0       | Top 30 only     | Locked at 3      | No (sequential)   | Last 5           |
-| Pro  | $9.99/mo | Full catalog    | Yes (1–5)        | Yes               | Unlimited        |
+| Tier | Price    | Drill Catalog   | Custom Intensity | Station Splitting | Practice Log |
+|------|----------|-----------------|------------------|-------------------|--------------|
+| Free | $0       | Top 30 only     | Locked at 3      | No (sequential)   | Last 5       |
+| Pro  | $9.99/mo | Full catalog    | Yes (1–5)        | Yes               | Unlimited    |
 
 Feature gating is in `src/subscription/featureGate.ts`.
 The engine itself is tier-unaware. Tier constraints are applied at the request boundary BEFORE the engine is invoked.
@@ -48,6 +48,50 @@ The array in `src/core/constants/ageGroups.ts` is frozen at runtime. Never sort 
 
 ---
 
+## Paywall System
+
+All upgrade paths route through `PaywallModal` via `openPaywall(trigger)` from `PracticeContext`.
+The standalone `app/upgrade.tsx` screen still exists but is no longer the primary upgrade path.
+
+| Trigger | Where Fired | Meaning |
+|---------|-------------|---------|
+| `ai_generator` | Generate tab | AI practice generation (Pro feature) |
+| `generation_limit` | `PracticeContext` line ~748 | Free user exhausted 3 free plans |
+| `history_limit` | Practice Log footer | Free user has >5 saved practices |
+| `drill_catalog` | Add-drill picker, Drill Library | Free user tapped a Pro-only drill |
+| `feature` | `UpgradeBanner` (default) | Generic feature gate (intensity, splitting) |
+
+**PaywallModal** renders in: `app/practice.tsx`, `app/(tabs)/history.tsx`, `app/(tabs)/drills.tsx`.
+**UpgradeBanner** calls `openPaywall(trigger)` — does NOT navigate to `/upgrade`.
+
+RevenueCat integration lives in `src/subscription/service.ts`.
+`initiateUpgrade()` and `restorePurchases()` are called only from inside `PaywallModal`.
+
+---
+
+## Legal & App Store Compliance
+
+| Asset | Location | Live URL |
+|-------|----------|----------|
+| Privacy Policy source | `privacy-policy.html` (repo root) | `https://jinlee1978.github.io/diamondscript/privacy/` |
+| Privacy Policy (Pages) | `privacy/index.html` | Same URL — served by GitHub Pages |
+| Terms of Use (EULA) | Apple Standard EULA | `https://www.apple.com/legal/internet-services/itunes/dev/stdeula/` |
+
+Both URLs are referenced in `components/PaywallModal.tsx` (constants `PRIVACY_URL`, `TERMS_URL`) and `app/upgrade.tsx`.
+
+Apple Guideline 3.1.2 requirements (all met in-app):
+- Subscription title: "DiamondScript Pro"
+- Price: $9.99/month (also fetched dynamically from RevenueCat)
+- Length: Monthly, auto-renews until cancelled
+- Disclosure text + legal links in PaywallModal and upgrade.tsx
+
+App Store Connect metadata checklist (manual):
+- Privacy Policy URL field → `https://jinlee1978.github.io/diamondscript/privacy/`
+- EULA → Apple Standard License Agreement (default)
+- IAP product "DiamondScript Pro" must be attached to each app submission with a review screenshot
+
+---
+
 ## Key File Map
 
 | File | Responsibility |
@@ -63,4 +107,10 @@ The array in `src/core/constants/ageGroups.ts` is frozen at runtime. Never sort 
 | `src/core/constants/weights.ts` | ALPHA, BETA, GAMMA, MAX_COMPLEXITY_DISTANCE |
 | `src/core/constants/intensityConfig.ts` | Transition time & RPM constants |
 | `src/subscription/featureGate.ts` | Tier constraint application |
-| `src/data/seedDrills.ts` | Initial drill catalog |
+| `src/subscription/service.ts` | RevenueCat SDK — purchase, restore, offerings |
+| `src/data/seedDrills.ts` | Initial drill catalog (30 free + 18 pro = 48) |
+| `components/PaywallModal.tsx` | Unified paywall UI — all upgrade flows land here |
+| `components/UpgradeBanner.tsx` | Inline upgrade nudge — calls `openPaywall()` |
+| `context/PracticeContext.tsx` | App state — includes paywall state + trigger management |
+| `privacy-policy.html` | Privacy policy source (also copied to `privacy/index.html`) |
+| `app.json` | Version: 1.1.0, buildNumber: 6, versionCode: 96 |
