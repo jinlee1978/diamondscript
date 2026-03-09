@@ -22,6 +22,7 @@ import { Drill, PracticeSession, DrillBlock } from '../src/data/types';
 import DrillCard from '../components/DrillCard';
 import CategoryBadge from '../components/CategoryBadge';
 import UpgradeBanner from '../components/UpgradeBanner';
+import PaywallModal from '../components/PaywallModal';
 import Toast from '../components/Toast';
 import { filterCandidates } from '../src/core/engine/drillSelector';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
@@ -207,6 +208,10 @@ export default function PracticeScreen() {
     resetToEngineOrder,
     updateCurrentSession,
     reorderDrillInTimeline,
+    showPaywall,
+    paywallTrigger,
+    closePaywall,
+    openPaywall,
   } = usePractice();
   const [showAddPicker, setShowAddPicker] = useState(false);
   const [showSharePreview, setShowSharePreview] = useState(false);
@@ -299,7 +304,7 @@ export default function PracticeScreen() {
     const sessionDrillIds = new Set(timelineDrills.map((b) => b.drill.id));
     const drills: Drill[] = canAdd
       ? [
-          ...filterCandidates(SEED_DRILL_CATALOG, request.ageGroup, tier).filter((d) => !sessionDrillIds.has(d.id)),
+          ...filterCandidates(SEED_DRILL_CATALOG, request.ageGroup, 'pro').filter((d) => !sessionDrillIds.has(d.id)),
           ...customDrills.filter((c) => !sessionDrillIds.has(c.id)).map(customToDrill),
         ]
       : [];
@@ -573,22 +578,37 @@ export default function PracticeScreen() {
             <ScrollView style={styles.pickerList}>
               {addableDrills.map((drill) => {
                 const isCustom = customDrills.some((c) => c.id === drill.id);
+                const isProLocked = tier === 'free' && drill.subscriptionTier === 'pro';
                 return (
                   <TouchableOpacity
                     key={drill.id}
-                    style={styles.pickerRow}
-                    onPress={() => { addDrillToSession(drill); setShowAddPicker(false); }}
+                    style={[styles.pickerRow, isProLocked && styles.pickerRowLocked]}
+                    onPress={() => {
+                      if (isProLocked) {
+                        setShowAddPicker(false);
+                        openPaywall('drill_catalog');
+                      } else {
+                        addDrillToSession(drill);
+                        setShowAddPicker(false);
+                      }
+                    }}
                   >
                     <View style={styles.pickerRowInfo}>
                       <View style={styles.pickerRowTop}>
-                        <Text style={styles.pickerDrillName}>{drill.name}</Text>
+                        <Text style={[styles.pickerDrillName, isProLocked && styles.pickerDrillNameLocked]}>{drill.name}</Text>
                         {isCustom && (
                           <View style={styles.pickerCustomBadge}>
                             <Text style={styles.pickerCustomBadgeText}>Custom</Text>
                           </View>
                         )}
+                        {isProLocked && (
+                          <View style={styles.pickerProBadge}>
+                            <Ionicons name="lock-closed" size={10} color="#D4AF37" />
+                            <Text style={styles.pickerProBadgeText}>PRO</Text>
+                          </View>
+                        )}
                       </View>
-                      <Text style={styles.pickerDrillDesc} numberOfLines={1}>{drill.description}</Text>
+                      <Text style={[styles.pickerDrillDesc, isProLocked && styles.pickerDrillDescLocked]} numberOfLines={1}>{drill.description}</Text>
                     </View>
                     <CategoryBadge category={drill.category} />
                   </TouchableOpacity>
@@ -657,6 +677,13 @@ export default function PracticeScreen() {
         </TouchableOpacity>
       </Modal>
     )}
+
+    <PaywallModal
+      visible={showPaywall}
+      onClose={closePaywall}
+      onSuccess={closePaywall}
+      trigger={paywallTrigger ?? undefined}
+    />
 
     <Toast
       message={toastMessage}
@@ -938,6 +965,29 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#059669',
+  },
+  pickerRowLocked: {
+    opacity: 0.6,
+  },
+  pickerDrillNameLocked: {
+    color: '#9CA3AF',
+  },
+  pickerDrillDescLocked: {
+    color: '#D1D5DB',
+  },
+  pickerProBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  pickerProBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#D4AF37',
   },
 
   // Share preview modal

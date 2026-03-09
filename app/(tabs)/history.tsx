@@ -20,6 +20,7 @@ import { animateExpand, animateFade } from '../../src/utils/animations';
 import { usePractice, HistoryEntry } from '../../context/PracticeContext';
 import CategoryBadge from '../../components/CategoryBadge';
 import SourceBadge from '../../components/SourceBadge';
+import PaywallModal from '../../components/PaywallModal';
 import { DrillCategory, PracticeSession, PracticeSource } from '../../src/data/types';
 import { AgeGroup } from '../../src/data/types/ageGroup';
 import { generateShareLink } from '../../src/utils/practiceSerializer';
@@ -116,7 +117,7 @@ const SOURCE_LABELS: Record<PracticeSource, string> = { ai: 'AI', manual: 'Manua
 export default function HistoryScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { tier, history, restoreSession, deletePracticeHistory, updateCoachNote } = usePractice();
+  const { tier, history, restoreSession, deletePracticeHistory, updateCoachNote, showPaywall, paywallTrigger, openPaywall, closePaywall } = usePractice();
 
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -589,16 +590,26 @@ export default function HistoryScreen() {
       );
     }
     if (tier === 'free' && history.length > FREE_HISTORY_LIMIT) {
+      const hiddenCount = history.length - FREE_HISTORY_LIMIT;
       return (
         <TouchableOpacity
-          style={styles.upgradeNote}
-          onPress={() => router.push('/upgrade')}
-          activeOpacity={0.7}
+          style={styles.upgradeGate}
+          onPress={() => openPaywall('history_limit')}
+          activeOpacity={0.8}
         >
-          <Ionicons name="diamond-outline" size={16} color="#92400E" />
-          <Text style={styles.upgradeNoteText}>
-            Keep unlimited practice log with <Text style={styles.upgradeNoteBold}>Pro</Text>
+          <View style={styles.upgradeGateIconCircle}>
+            <Ionicons name="lock-closed" size={20} color="#D4AF37" />
+          </View>
+          <Text style={styles.upgradeGateTitle}>
+            {hiddenCount} more practice{hiddenCount !== 1 ? 's' : ''} hidden
           </Text>
+          <Text style={styles.upgradeGateBody}>
+            Free accounts keep the last {FREE_HISTORY_LIMIT} practices. Upgrade to Pro for your full coaching journal.
+          </Text>
+          <View style={styles.upgradeGateButton}>
+            <Ionicons name="diamond" size={14} color="#FFFFFF" />
+            <Text style={styles.upgradeGateButtonText}>Unlock Full History</Text>
+          </View>
         </TouchableOpacity>
       );
     }
@@ -624,6 +635,13 @@ export default function HistoryScreen() {
         maxToRenderPerBatch={5}
         windowSize={5}
         keyboardShouldPersistTaps="handled"
+      />
+
+      <PaywallModal
+        visible={showPaywall}
+        onClose={closePaywall}
+        onSuccess={closePaywall}
+        trigger={paywallTrigger ?? undefined}
       />
 
       {/* Share Preview Modal */}
@@ -877,15 +895,31 @@ const styles = StyleSheet.create({
   },
   noResultsText: { fontSize: 15, fontWeight: '500', color: '#9CA3AF' },
 
-  // Upgrade
-  upgradeNote: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: '#FEF3C7', borderRadius: 14,
-    paddingHorizontal: 18, paddingVertical: 14,
-    marginTop: 8,
+  // Upgrade gate (prominent)
+  upgradeGate: {
+    alignItems: 'center', backgroundColor: '#FFFBEB',
+    borderRadius: 16, padding: 24, marginTop: 12,
+    borderWidth: 1.5, borderColor: '#FDE68A', borderStyle: 'dashed',
   },
-  upgradeNoteText: { fontSize: 14, color: '#92400E' },
-  upgradeNoteBold: { fontWeight: '700' },
+  upgradeGateIconCircle: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: '#FEF3C7',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+  },
+  upgradeGateTitle: {
+    fontSize: 16, fontWeight: '700', color: '#92400E', marginBottom: 6,
+  },
+  upgradeGateBody: {
+    fontSize: 13, color: '#B45309', textAlign: 'center', lineHeight: 19,
+    marginBottom: 16, paddingHorizontal: 8,
+  },
+  upgradeGateButton: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#D4AF37', borderRadius: 12,
+    paddingVertical: 12, paddingHorizontal: 24,
+  },
+  upgradeGateButtonText: {
+    color: '#FFFFFF', fontSize: 15, fontWeight: '700',
+  },
 
   // ── Share Preview Modal ──
   shareBackdrop: {

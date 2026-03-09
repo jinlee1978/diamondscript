@@ -79,7 +79,7 @@ const debouncedSave = (() => {
 export type { CustomDrill };
 
 // BUILD 81: Paywall trigger types
-export type PaywallTrigger = 'ai_generator' | 'history_limit' | 'feature';
+export type PaywallTrigger = 'ai_generator' | 'history_limit' | 'generation_limit' | 'drill_catalog' | 'feature';
 
 interface PracticeContextValue {
   // From SubscriptionContext
@@ -745,7 +745,7 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
     // BUILD 101: Generation gate - free users get 3 plans, then paywall
     // (async check is non-blocking; we use cached freeGenerationsLeft for instant gating)
     if (tier === SubscriptionTier.FREE && freeGenerationsLeft <= 0) {
-      openPaywall('history_limit');
+      openPaywall('generation_limit');
       return null;
     }
 

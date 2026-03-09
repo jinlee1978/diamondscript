@@ -3,10 +3,12 @@ import { View, Text, ScrollView, FlatList, TouchableOpacity, TextInput, StyleShe
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import { usePractice } from '../../context/PracticeContext';
+import { Ionicons } from '@expo/vector-icons';
+import { usePractice, PaywallTrigger } from '../../context/PracticeContext';
 import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
 import { DrillCategory } from '../../src/data/types';
 import CategoryBadge from '../../components/CategoryBadge';
+import PaywallModal from '../../components/PaywallModal';
 import Toast from '../../components/Toast';
 
 // Local Error Boundary: prevents list rendering errors from crashing the entire app
@@ -90,7 +92,7 @@ const CATEGORY_LABELS: Record<DrillCategory, string> = {
 export default function StarredScreen() {
   // BUILD 45: ALL hooks at absolute top (React Rules of Hooks - Build 42 fix maintained)
   const insets = useSafeAreaInsets();
-  const { starredDrills, toggleStar, customDrills, addCustomDrill, deleteCustomDrill, importDrill } = usePractice();
+  const { tier, starredDrills, toggleStar, customDrills, addCustomDrill, deleteCustomDrill, importDrill, showPaywall, paywallTrigger, openPaywall, closePaywall } = usePractice();
   const [isCreating, setIsCreating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [newName, setNewName] = useState('');
@@ -463,11 +465,22 @@ export default function StarredScreen() {
 
     // type === 'starred' (app library drill)
     const drill = item.drill;
+    const isProLocked = tier === 'free' && drill.subscriptionTier === 'pro';
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, isProLocked && styles.cardProLocked]}>
         <View style={styles.header}>
           <Text style={styles.name}>{drill.name}</Text>
           <View style={styles.headerRight}>
+            {isProLocked && (
+              <TouchableOpacity
+                style={styles.proBadge}
+                onPress={() => openPaywall('drill_catalog')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="lock-closed" size={10} color="#D4AF37" />
+                <Text style={styles.proBadgeText}>PRO</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() => handleShareDrill(drill)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -527,6 +540,12 @@ export default function StarredScreen() {
         maxToRenderPerBatch={5}
         windowSize={5}
         showsVerticalScrollIndicator={true}
+      />
+      <PaywallModal
+        visible={showPaywall}
+        onClose={closePaywall}
+        onSuccess={closePaywall}
+        trigger={paywallTrigger ?? undefined}
       />
       <Toast
         message={toastMessage}
@@ -811,5 +830,23 @@ const styles = StyleSheet.create({
   metaDot: {
     fontSize: 10,
     color: '#D1D5DB',
+  },
+  cardProLocked: {
+    borderColor: '#FEF3C7',
+    borderWidth: 1.5,
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  proBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#D4AF37',
   },
 });

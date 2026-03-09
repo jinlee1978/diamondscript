@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { getOfferings } from '../src/subscription/service';
 import { usePractice } from '../context/PracticeContext';
 
-const FONT_ROUNDED = Platform.select({ ios: 'ui-rounded', default: undefined });
+const FONT_ROUNDED = Platform.select({ ios: 'System', default: 'sans-serif-medium' });
 
 const PRO_FEATURES = [
   'Custom Intensity',

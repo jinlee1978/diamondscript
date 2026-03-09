@@ -40,7 +40,7 @@ interface PaywallModalProps {
   onClose: () => void;
   onSuccess: () => void;
   /** Optional context for why the paywall was triggered */
-  trigger?: 'ai_generator' | 'history_limit' | 'feature';
+  trigger?: 'ai_generator' | 'history_limit' | 'generation_limit' | 'drill_catalog' | 'feature';
 }
 
 export default function PaywallModal({
@@ -95,6 +95,10 @@ export default function PaywallModal({
         return 'Unlock AI powered practice plans tailored to your team.';
       case 'history_limit':
         return 'Keep your entire season history with unlimited practice storage.';
+      case 'generation_limit':
+        return 'You\'ve used your free practice plans. Go Pro for unlimited generation.';
+      case 'drill_catalog':
+        return 'Unlock the full drill catalog with advanced drills for every age group.';
       default:
         return 'Take your coaching to the next level with Pro features.';
     }
@@ -276,7 +280,7 @@ const styles = StyleSheet.create({
   headline: {
     fontSize: 28,
     fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
+    fontFamily: Platform.select({ ios: 'System', default: 'sans-serif-medium' }),
     color: '#1B4332',
     textAlign: 'center',
     marginBottom: 4,
@@ -284,7 +288,7 @@ const styles = StyleSheet.create({
   subheadline: {
     fontSize: 18,
     fontWeight: '500',
-    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
+    fontFamily: Platform.select({ ios: 'System', default: 'sans-serif-medium' }),
     color: '#059669',
     textAlign: 'center',
     marginBottom: 12,
@@ -317,7 +321,7 @@ const styles = StyleSheet.create({
   benefitTitle: {
     fontSize: 16,
     fontWeight: '600',
-    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
+    fontFamily: Platform.select({ ios: 'System', default: 'sans-serif-medium' }),
     color: '#111827',
     marginBottom: 3,
   },
@@ -335,7 +339,7 @@ const styles = StyleSheet.create({
   price: {
     fontSize: 42,
     fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
+    fontFamily: Platform.select({ ios: 'System', default: 'sans-serif-medium' }),
     color: '#1B4332',
   },
   priceUnit: {
@@ -370,7 +374,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
-    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
+    fontFamily: Platform.select({ ios: 'System', default: 'sans-serif-medium' }),
   },
   restoreButton: {
     paddingVertical: 14,
@@ -380,7 +384,7 @@ const styles = StyleSheet.create({
     color: '#1B3D2F',
     fontSize: 15,
     fontWeight: '600',
-    fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
+    fontFamily: Platform.select({ ios: 'System', default: 'sans-serif-medium' }),
   },
   privacyFooter: {
     fontSize: 12,
