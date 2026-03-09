@@ -76,6 +76,8 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="practice" options={{ title: 'Practice' }} />
             <Stack.Screen name="upgrade" options={{ title: 'Go Pro' }} />
+            {/* BUILD 101: Season Mode */}
+            <Stack.Screen name="season" options={{ title: 'Season' }} />
           </Stack>
         </PracticeProvider>
       </DrillsProvider>

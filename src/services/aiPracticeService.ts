@@ -241,16 +241,23 @@ export function convertAIPlanToPracticeSession(
   request: AIPracticeRequest,
   tier: 'free' | 'pro'
 ): PracticeSession {
-  // Map age group string to AgeGroup enum
+  // BUILD 100: Map age group string to AgeGroup enum (7 groups)
   const ageGroupMap: Record<string, AgeGroup> = {
+    'Intro (3-4)': AgeGroup.INTRO,
+    'T-Ball (5-6)': AgeGroup.T_BALL,
     'T-Ball': AgeGroup.T_BALL,
-    '8U': AgeGroup.AGE_8U,
-    '10U': AgeGroup.AGE_10U,
-    '12U': AgeGroup.AGE_12U,
-    '14U': AgeGroup.AGE_14U,
+    'Coach Pitch (7-8)': AgeGroup.COACH_PITCH,
+    '8U': AgeGroup.COACH_PITCH,
+    'Machine Pitch (8-9)': AgeGroup.MACHINE_PITCH,
+    'Kid Pitch (9-10)': AgeGroup.KID_PITCH,
+    '10U': AgeGroup.KID_PITCH,
+    'Competitive (11-12)': AgeGroup.COMPETITIVE,
+    '12U': AgeGroup.COMPETITIVE,
+    'Advanced (13-14)': AgeGroup.ADVANCED,
+    '14U': AgeGroup.ADVANCED,
   };
 
-  const ageGroup = ageGroupMap[request.ageGroup] ?? AgeGroup.AGE_10U;
+  const ageGroup = ageGroupMap[request.ageGroup] ?? AgeGroup.KID_PITCH;
 
   // Infer category from section title or focus area
   const inferCategory = (sectionTitle: string, focusArea: string): DrillCategory => {
@@ -311,13 +318,15 @@ export function convertAIPlanToPracticeSession(
   const totalDrillTime = drillBlocks.reduce((sum, block) => sum + block.timeMinutes, 0);
   const totalTransitionTime = Math.max(0, drillBlocks.length - 1) * transitionTimeMinutes;
 
-  // Age-based warmup/cooldown (in minutes)
+  // BUILD 100: Age-based warmup/cooldown (in minutes) — 7 groups
   const warmupCooldownMap: Record<AgeGroup, { warmup: number; cooldown: number }> = {
-    [AgeGroup.T_BALL]: { warmup: 5, cooldown: 5 },
-    [AgeGroup.AGE_8U]: { warmup: 8, cooldown: 5 },
-    [AgeGroup.AGE_10U]: { warmup: 10, cooldown: 5 },
-    [AgeGroup.AGE_12U]: { warmup: 12, cooldown: 8 },
-    [AgeGroup.AGE_14U]: { warmup: 15, cooldown: 10 },
+    [AgeGroup.INTRO]: { warmup: 5, cooldown: 5 },
+    [AgeGroup.T_BALL]: { warmup: 8, cooldown: 5 },
+    [AgeGroup.COACH_PITCH]: { warmup: 8, cooldown: 5 },
+    [AgeGroup.MACHINE_PITCH]: { warmup: 8, cooldown: 5 },
+    [AgeGroup.KID_PITCH]: { warmup: 10, cooldown: 5 },
+    [AgeGroup.COMPETITIVE]: { warmup: 10, cooldown: 7 },
+    [AgeGroup.ADVANCED]: { warmup: 12, cooldown: 8 },
   };
 
   const { warmup, cooldown } = warmupCooldownMap[ageGroup];

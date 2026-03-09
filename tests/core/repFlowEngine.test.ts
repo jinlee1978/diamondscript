@@ -14,7 +14,7 @@ function getDrills(...ids: string[]): Drill[] {
 
 describe('calculateOptimalRepFlow', () => {
   test('Scenario A: 10U, intensity 3, 1 assistant → 2 stations, 2 drills each, 126 reps, wall clock 60', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_10U);
+    const def = getAgeGroupDefinition(AgeGroup.KID_PITCH);
     const drills = getDrills('grounders-and-throw', 'lead-off-drill', 'batting-tee-drill', 'catch-and-throw-relay');
     const layout = calculateOptimalRepFlow(def, drills, 3, 1);
 
@@ -34,7 +34,7 @@ describe('calculateOptimalRepFlow', () => {
   });
 
   test('Scenario B: 12U, intensity 4, 0 assistants → 1 station, 4 drills, 88 reps, wall clock 75', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_12U);
+    const def = getAgeGroupDefinition(AgeGroup.COMPETITIVE);
     const drills = getDrills('double-play-drill', 'bat-speed-drill', 'stolen-base-sim', 'pitching-mechanics');
     const layout = calculateOptimalRepFlow(def, drills, 4, 0);
 
@@ -50,7 +50,7 @@ describe('calculateOptimalRepFlow', () => {
   });
 
   test('single drill: zero transitions, all time goes to one drill', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_10U);
+    const def = getAgeGroupDefinition(AgeGroup.KID_PITCH);
     const drills = getDrills('grounders-and-throw');
     const layout = calculateOptimalRepFlow(def, drills, 3, 0);
 
@@ -62,7 +62,7 @@ describe('calculateOptimalRepFlow', () => {
   });
 
   test('more coaches than drills: stationCount caps at numDrills', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_10U);
+    const def = getAgeGroupDefinition(AgeGroup.KID_PITCH);
     const drills = getDrills('grounders-and-throw', 'batting-tee-drill');
     const layout = calculateOptimalRepFlow(def, drills, 3, 5); // 6 coaches, 2 drills
 
@@ -72,7 +72,7 @@ describe('calculateOptimalRepFlow', () => {
   });
 
   test('empty drill list returns empty layout', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_10U);
+    const def = getAgeGroupDefinition(AgeGroup.KID_PITCH);
     const layout = calculateOptimalRepFlow(def, [], 3, 0);
 
     expect(layout.stations).toHaveLength(0);
@@ -81,7 +81,7 @@ describe('calculateOptimalRepFlow', () => {
 
   test('bonus reps never exceed 50% of base repsPerDrill', () => {
     // 3 drills, 2 coaches → station 0 gets 2 drills, station 1 gets 1 (short station)
-    const def = getAgeGroupDefinition(AgeGroup.AGE_10U);
+    const def = getAgeGroupDefinition(AgeGroup.KID_PITCH);
     const drills = getDrills('grounders-and-throw', 'batting-tee-drill', 'base-running-relay');
     const layout = calculateOptimalRepFlow(def, drills, 3, 1);
 
@@ -97,14 +97,14 @@ describe('calculateOptimalRepFlow', () => {
   });
 
   test('intensity 1 produces transition time 4.0 min', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_10U);
+    const def = getAgeGroupDefinition(AgeGroup.KID_PITCH);
     const drills = getDrills('grounders-and-throw', 'batting-tee-drill');
     const layout = calculateOptimalRepFlow(def, drills, 1, 0);
     expect(layout.transitionTimeMinutes).toBeCloseTo(4.0, 2);
   });
 
   test('intensity 5 produces transition time 2.0 min', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_10U);
+    const def = getAgeGroupDefinition(AgeGroup.KID_PITCH);
     const drills = getDrills('grounders-and-throw', 'batting-tee-drill');
     const layout = calculateOptimalRepFlow(def, drills, 5, 0);
     expect(layout.transitionTimeMinutes).toBeCloseTo(2.0, 2);

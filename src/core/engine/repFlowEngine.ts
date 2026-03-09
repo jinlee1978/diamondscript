@@ -70,12 +70,13 @@ export function calculateOptimalRepFlow(
 
       if (isShortStation && isLastDrill) {
         // This station finishes one drill-slot early. Award bonus reps on the last drill,
-        // capped at 50% of base repsPerDrill.
-        const maxBonus = Math.round(repsPerDrill * BONUS_REP_CAP_FRACTION);
-        bonusReps = maxBonus;
+        // capped at 50% of base repsPerDrill AND capped by available time.
+        const maxBonusByCap = Math.round(repsPerDrill * BONUS_REP_CAP_FRACTION);
+        const maxBonusByTime = Math.floor(timePerDrill * baseRPM);
+        bonusReps = Math.min(maxBonusByCap, maxBonusByTime);
         // Open time = the leftover slot minus the time the bonus reps consume
         const bonusTimeConsumed = bonusReps / baseRPM;
-        openTimeMinutes = timePerDrill - bonusTimeConsumed;
+        openTimeMinutes = Math.max(0, timePerDrill - bonusTimeConsumed);
       }
 
       return {

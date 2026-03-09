@@ -19,14 +19,16 @@ The engine itself is tier-unaware. Tier constraints are applied at the request b
 
 ## Age Group Definitions (Sacred Ordering — Do Not Flatten)
 
-1. **T-Ball (5–6):** No live pitching. Pure motor fundamentals.
-2. **8U (7–8):** Coach-pitch or beginner kid-pitch.
-3. **10U (9–10):** Kid-pitch. Basic positional play emerges.
-4. **12U (11–12):** Competitive. Position specialization begins.
-5. **14U (13–14):** Advanced fundamentals. Travel ball readiness.
+1. **Intro (3–4):** Pre-T-Ball. No gloves, no live pitching. Pure motor skills (rolling, running, underhand throwing). Max 30 min practice.
+2. **T-Ball (5–6):** Ball on tee only. No live pitching. Basic motor fundamentals.
+3. **Coach Pitch (7–8):** Coach throws underhand or overhand. Ball tracking and swing timing emerge.
+4. **Machine Pitch (8–9):** Pitching machine delivers consistent strikes. Swing mechanics and live fielding.
+5. **Kid Pitch (9–10):** Kids pitch to each other. Basic positional play emerges.
+6. **Competitive (11–12):** Position specialization begins. Lead-offs, stealing, advanced situational play.
+7. **Advanced (13–14):** Full baseball. Longer distances, pitch selection, travel ball readiness.
 
 These map 1:1 to the `AgeGroup` enum in `src/data/types/ageGroup.ts`.
-The ordering is encoded as an integer ordinal (0–4) and used for complexity ceiling lookups.
+The ordering is encoded as an integer ordinal (0–6) and used for complexity ceiling lookups.
 The array in `src/core/constants/ageGroups.ts` is frozen at runtime. Never sort or reorder it.
 
 ---
@@ -40,7 +42,7 @@ The array in `src/core/constants/ageGroups.ts` is frozen at runtime. Never sort 
   See `src/core/logic/experienceWeighting.ts`.
 - **All complexity scores live on a 1.0–5.0 float scale.**
 - **Drill categories are:** hitting, fielding, pitching, baserunning.
-  T-Ball and 8U suppress pitching from the candidate pool at the data level (ageGroupCompatibility).
+  Intro, T-Ball, and Coach Pitch suppress pitching from the candidate pool at the data level (ageGroupCompatibility).
 - **NumDrills is a coach-configurable input.** The engine adapts reps and station layouts to any value.
 - **Subscription gating sits outside the engine.** The engine never sees a SubscriptionTier.
 

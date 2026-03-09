@@ -1,218 +1,181 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Image } from 'react-native';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { usePractice } from '../../context/PracticeContext';
 import { DrillCategory } from '../../src/data/types';
 import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
 import { getSubscriptionInfo } from '../../src/subscription/service';
+import { getActiveTeamProfile } from '../../src/data/storage/teamProfileStorage';
+import { getActiveSeason } from '../../src/data/storage/seasonStorage';
+import { TeamProfile } from '../../src/data/types/teamProfile';
+import { Season, ScheduledPractice } from '../../src/data/types/season';
 
-// BUILD 69: Consistent age group formatting helper
+// Age group formatting
 function formatAgeGroup(raw: string): string {
-  return raw.replace('AGE_', '').replace('_', '-').replace('T-BALL', 'T-Ball');
+  const labelMap: Record<string, string> = {
+    'INTRO': 'Intro (3-4)', 'T_BALL': 'T-Ball', 'COACH_PITCH': 'Coach Pitch',
+    'MACHINE_PITCH': 'Machine Pitch', 'KID_PITCH': 'Kid Pitch',
+    'COMPETITIVE': '11-12U', 'ADVANCED': '13-14U',
+    '8U': 'Coach Pitch', '10U': 'Kid Pitch', '12U': '11-12U', '14U': '13-14U',
+  };
+  return labelMap[raw] ?? raw.replace('AGE_', '').replace('_', '-');
 }
 
-
-// BUILD 49: Universal Import - supports both Drills and Practices
+// BUILD 49: Universal Import
 interface PendingImport {
   type: 'drill' | 'practice';
-  // Drill fields
   name?: string;
   description?: string;
   category?: DrillCategory;
   equipment?: string[];
   isDuplicate?: boolean;
-  // Practice fields
   totalMinutes?: number;
-  coachCount?: number; // BUILD 93: renamed from stationCount to match export field
+  coachCount?: number;
   ageGroup?: string;
-  practiceData?: any; // Full practice session for import
+  practiceData?: any;
 }
 
 export default function HomeScreen() {
-  // BUILD 47: ALL hooks at absolute top (React Rules of Hooks)
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { tier, currentSession, isLoading, starredDrills, customDrills, history, importDrill, importPractice } = usePractice();
 
-  // BUILD 47: Magic Import state (visual card instead of Alert)
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [promptedDrills, setPromptedDrills] = useState<Set<string>>(new Set());
+  const [activeTeam, setActiveTeam] = useState<TeamProfile | null>(null);
+  const [nextPractice, setNextPractice] = useState<ScheduledPractice | null>(null);
+  const [activeSeason, setActiveSeason] = useState<Season | null>(null);
 
-  // BUILD 85: Double-Lock - Re-validate tier every time HomeScreen is viewed
-  // This ensures UI snaps back to truth even if state variable is "stuck"
+  // Validate tier on focus
   useFocusEffect(
     useCallback(() => {
-      getSubscriptionInfo()
-        .then((info) => {
-          console.log('[HomeScreen Focus] Tier validated:', info.tier);
-        })
-        .catch(() => {
-          // Silent - PracticeContext handles the hard gate
-        });
+      getSubscriptionInfo().catch(() => {});
     }, [])
   );
 
-  // BUILD 49: Universal Magic Import - detects both Drills and Practices
+  // Load dashboard data on focus
+  useFocusEffect(
+    useCallback(() => {
+      getActiveTeamProfile().then(setActiveTeam);
+      getActiveSeason().then(season => {
+        setActiveSeason(season);
+        if (season) {
+          const today = new Date().toISOString().split('T')[0];
+          const upcoming = season.practices
+            .filter(p => p.date >= today && !p.completed)
+            .sort((a, b) => a.date.localeCompare(b.date));
+          setNextPractice(upcoming[0] || null);
+        } else {
+          setNextPractice(null);
+        }
+      });
+    }, [])
+  );
+
+  // Clipboard import logic (unchanged)
   const checkClipboard = React.useCallback(async (isManualTrigger = false) => {
     try {
       const clipboardContent = await Clipboard.getStringAsync();
-
-      // BUILD 49: Debugging transparency
-      console.log('[Clipboard Scan]', {
-        hasPrefix: clipboardContent.includes('{DIAMONDSCRIPT_DATA:'),
-        isManual: isManualTrigger
-      });
-
-      // Check if clipboard contains the magic prefix
       if (clipboardContent.includes('{DIAMONDSCRIPT_DATA:')) {
-        // BUILD 51: Robust regex - matches any character including newlines and special chars
         const match = clipboardContent.match(/\{DIAMONDSCRIPT_DATA:([\s\S]+?)\}\s*$/);
-
-        console.log('[Clipboard Scan]', { found: !!match });
-
         if (match && match[1]) {
           try {
             const data = JSON.parse(match[1]);
-            const contentType = data.type || 'drill'; // Default to drill for backwards compatibility
+            const contentType = data.type || 'drill';
 
-            console.log('[Clipboard Scan]', { type: contentType, hasName: !!data.name });
-
-            // BUILD 49: DRILL IMPORT (removed category gatekeeper - fix for "8U/14U trap")
-            if (contentType === 'drill') {
-              // Validate ONLY name and description (no category requirement)
-              if (data.name && data.description) {
-                // BUILD 46: Session tracking - check if already prompted
-                const drillHash = `${data.name}|${data.description}`;
-                if (promptedDrills.has(drillHash)) {
-                  return true; // Already prompted - return success
-                }
-
-                // Mark as prompted
-                setPromptedDrills((prev) => new Set(prev).add(drillHash));
-
-                // BUILD 46: Duplicate detection
-                const isDuplicate = customDrills.some(
-                  (d) => d.name === data.name && d.description === data.description
-                );
-
-                // Show Import Card
-                setPendingImport({
-                  type: 'drill',
-                  name: data.name,
-                  description: data.description,
-                  category: data.category,
-                  equipment: data.equipment || [],
-                  isDuplicate,
-                });
-
-                if (isManualTrigger) {
-                  Alert.alert('✓ Shared Drill Found', 'Import card displayed below.');
-                }
-                return true;
-              }
+            if (contentType === 'drill' && data.name && data.description) {
+              const drillHash = `${data.name}|${data.description}`;
+              if (promptedDrills.has(drillHash)) return true;
+              setPromptedDrills((prev) => new Set(prev).add(drillHash));
+              const isDuplicate = customDrills.some(
+                (d) => d.name === data.name && d.description === data.description
+              );
+              setPendingImport({
+                type: 'drill', name: data.name, description: data.description,
+                category: data.category, equipment: data.equipment || [], isDuplicate,
+              });
+              if (isManualTrigger) Alert.alert('Shared Drill Found', 'Import card displayed below.');
+              return true;
             }
 
-            // BUILD 49/93: PRACTICE IMPORT (coachCount — matches export format in practice.tsx)
-            if (contentType === 'practice') {
-              if (data.ageGroup && data.totalMinutes && (data.coachCount || data.stationCount)) {
-                const practiceHash = `practice-${data.ageGroup}-${data.totalMinutes}`;
-                if (promptedDrills.has(practiceHash)) {
-                  return true; // Already prompted
-                }
-
-                setPromptedDrills((prev) => new Set(prev).add(practiceHash));
-
-                setPendingImport({
-                  type: 'practice',
-                  ageGroup: data.ageGroup,
-                  totalMinutes: data.totalMinutes,
-                  coachCount: data.coachCount || data.stationCount || 1, // BUILD 93: match export field
-                  practiceData: data,
-                });
-
-                if (isManualTrigger) {
-                  Alert.alert('✓ Shared Practice Found', 'Import card displayed below.');
-                }
-                return true;
-              }
+            if (contentType === 'practice' && data.ageGroup && data.totalMinutes) {
+              const practiceHash = `practice-${data.ageGroup}-${data.totalMinutes}`;
+              if (promptedDrills.has(practiceHash)) return true;
+              setPromptedDrills((prev) => new Set(prev).add(practiceHash));
+              setPendingImport({
+                type: 'practice', ageGroup: data.ageGroup, totalMinutes: data.totalMinutes,
+                coachCount: data.coachCount || data.stationCount || 1, practiceData: data,
+              });
+              if (isManualTrigger) Alert.alert('Shared Practice Found', 'Import card displayed below.');
+              return true;
             }
-          } catch (parseError) {
-            console.error('[Clipboard Scan] Parse error:', parseError);
-          }
+          } catch { /* parse error */ }
         }
       }
-
-      // BUILD 49: Manual trigger feedback - no data found
-      if (isManualTrigger) {
-        Alert.alert('No Shared Content Found', 'Copy a shared drill or practice link and try again.');
-      }
+      if (isManualTrigger) Alert.alert('No Shared Content Found', 'Copy a shared drill or practice link and try again.');
       return false;
-    } catch (error) {
-      console.error('[Clipboard Scan] Failed:', error);
-      return false;
-    }
+    } catch { return false; }
   }, [promptedDrills, customDrills]);
 
-  // BUILD 49: Clipboard listener - automatic detection on screen focus
   useFocusEffect(
-    React.useCallback(() => {
-      checkClipboard(false); // Automatic, not manual
-    }, [checkClipboard])
+    React.useCallback(() => { checkClipboard(false); }, [checkClipboard])
   );
 
-  // BUILD 49: Universal Import handlers - support both drills and practices
   const handleImport = () => {
     if (!pendingImport) return;
-
     if (pendingImport.type === 'drill') {
-      importDrill(
-        pendingImport.name!,
-        pendingImport.description!,
-        pendingImport.category || 'hitting',
-        pendingImport.equipment || []
-      );
-    } else if (pendingImport.type === 'practice') {
-      // BUILD 51/93: Practice import — check return value (false = paywall blocked)
-      if (pendingImport.practiceData?.session) {
-        const success = importPractice(pendingImport.practiceData.session);
-        if (success) {
-          router.push('/practice');
-        }
-      } else {
-        Alert.alert('Import Error', 'Practice data is incomplete. Unable to import.');
-      }
+      importDrill(pendingImport.name!, pendingImport.description!, pendingImport.category || 'hitting', pendingImport.equipment || []);
+    } else if (pendingImport.type === 'practice' && pendingImport.practiceData?.session) {
+      const success = importPractice(pendingImport.practiceData.session);
+      if (success) router.push('/practice');
     }
-
-    // Clear clipboard and pending import
     Clipboard.setStringAsync('');
     setPendingImport(null);
   };
 
   const handleDismiss = () => {
-    if (!pendingImport) return;
-
-    // For duplicates, clear clipboard on dismiss (Build 46 pattern)
-    if (pendingImport.type === 'drill' && pendingImport.isDuplicate) {
-      Clipboard.setStringAsync('');
-    }
-
+    if (pendingImport?.type === 'drill' && pendingImport.isDuplicate) Clipboard.setStringAsync('');
     setPendingImport(null);
+  };
+
+  // Computed values
+  const starredAppDrills = SEED_DRILL_CATALOG.filter(d => starredDrills.has(d.id));
+  const totalDrills = starredAppDrills.length + customDrills.length;
+  const lastPractice = history.length > 0 ? history[0] : null;
+
+  const formatPracticeDate = (date: string) => {
+    const d = new Date(date + 'T12:00:00');
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    if (date === today.toISOString().split('T')[0]) return 'Today';
+    if (date === tomorrow.toISOString().split('T')[0]) return 'Tomorrow';
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
   return (
     <>
       <Stack.Screen
         options={{
-          headerRight: ({ tintColor }) => (
-            <TouchableOpacity
-              onPress={() => checkClipboard(true)}
-              style={{ paddingRight: 0 }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={{ fontSize: 22 }}>{'📥'}</Text>
-            </TouchableOpacity>
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18, paddingRight: 4 }}>
+              <TouchableOpacity
+                onPress={() => checkClipboard(true)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="clipboard-outline" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => router.push('/settings')}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="settings-outline" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
@@ -220,557 +183,458 @@ export default function HomeScreen() {
         style={styles.scroll}
         contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24 }]}
       >
-        {/* BUILD 51: Import Card - ALWAYS visible, even during loading */}
-        {/* BUILD 49: Universal Import Card - supports both Drills and Practices */}
+        {/* Import Card */}
         {pendingImport && (
-        <View style={[
-          styles.importCard,
-          pendingImport.type === 'practice' && styles.importCardPractice
-        ]}>
-          <View style={styles.importHeader}>
-            <View style={[
-              styles.sharedBadge,
-              pendingImport.type === 'practice' && styles.sharedBadgePractice
-            ]}>
-              <Text style={[
-                styles.sharedBadgeText,
-                pendingImport.type === 'practice' && styles.sharedBadgeTextPractice
-              ]}>
-                {pendingImport.type === 'drill' ? 'SHARED' : 'SHARED PLAN'}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={handleDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.importClose}>{'\u00D7'}</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* DRILL DISPLAY */}
-          {pendingImport.type === 'drill' && (
-            <>
-              <Text style={styles.importTitle}>
-                {pendingImport.isDuplicate ? 'Duplicate Drill Detected' : 'New Drill Available'}
-              </Text>
-
-              <View style={styles.importDrillInfo}>
-                <Text style={styles.importDrillName}>{pendingImport.name}</Text>
-                <Text style={styles.importDrillDesc} numberOfLines={2}>
-                  {pendingImport.description}
-                </Text>
-                {pendingImport.equipment && pendingImport.equipment.length > 0 && (
-                  <Text style={styles.importEquipment}>
-                    Equipment: {pendingImport.equipment.join(', ')}
-                  </Text>
-                )}
-              </View>
-
-              {pendingImport.isDuplicate && (
-                <Text style={styles.importWarning}>
-                  You already have this drill in your library. Import anyway?
-                </Text>
-              )}
-            </>
-          )}
-
-          {/* PRACTICE DISPLAY */}
-          {pendingImport.type === 'practice' && (
-            <>
-              <Text style={styles.importTitle}>Shared Practice Plan</Text>
-
-              <View style={styles.importDrillInfo}>
-                <Text style={styles.importDrillName}>
-                  {pendingImport.ageGroup} Practice
-                </Text>
-                <Text style={styles.importDrillDesc}>
-                  {pendingImport.totalMinutes} minutes • {pendingImport.coachCount} coach{pendingImport.coachCount !== 1 ? 'es' : ''}
+          <View style={[styles.importCard, pendingImport.type === 'practice' && styles.importCardPractice]}>
+            <View style={styles.importHeader}>
+              <View style={[styles.sharedBadge, pendingImport.type === 'practice' && styles.sharedBadgePractice]}>
+                <Text style={[styles.sharedBadgeText, pendingImport.type === 'practice' && styles.sharedBadgeTextPractice]}>
+                  {pendingImport.type === 'drill' ? 'SHARED DRILL' : 'SHARED PLAN'}
                 </Text>
               </View>
-
-              <Text style={styles.importWarning}>
-                This practice will be saved to your History and loaded for review.
-              </Text>
-            </>
-          )}
-
-          <View style={styles.importActions}>
-            <TouchableOpacity
-              style={[styles.importButton, styles.importButtonSecondary]}
-              onPress={handleDismiss}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.importButtonTextSecondary}>Dismiss</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.importButton, styles.importButtonPrimary]}
-              onPress={handleImport}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.importButtonTextPrimary}>
-                {pendingImport.type === 'drill'
-                  ? (pendingImport.isDuplicate ? 'Import Anyway' : 'Import')
-                  : 'Import Practice'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* BUILD 51: Conditional rendering - show loading or normal content */}
-      {isLoading ? (
-        <Text style={styles.loading}>Loading...</Text>
-      ) : (
-        <>
-          {/* Tier badge */}
-          <View style={styles.tierRow}>
-            <View style={[styles.tierBadge, tier === 'pro' && styles.tierBadgePro]}>
-              <Text style={styles.tierText}>{tier === 'pro' ? 'Pro' : 'Free'}</Text>
-            </View>
-          </View>
-
-          {/* Hero */}
-          <View style={styles.hero}>
-            <View style={styles.logoOuter}>
-              <View style={styles.logoInner} />
-            </View>
-            <Text style={styles.heroTitle}>DiamondScript</Text>
-            <Text style={styles.heroSub}>Practice generation for every diamond.</Text>
-          </View>
-
-          {/* Primary CTA */}
-          <TouchableOpacity
-            style={styles.ctaButton}
-            onPress={() => router.push('/setup')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.ctaText}>Generate Practice</Text>
-          </TouchableOpacity>
-
-          {/* Saved Drills shortcut - BUILD 68: Unified count matching drills.tsx */}
-          {(() => {
-            // Same calculation as drills.tsx: starred app drills + custom drills
-            const starredAppDrills = SEED_DRILL_CATALOG.filter(d => starredDrills.has(d.id));
-            const totalDrills = starredAppDrills.length + customDrills.length;
-            return (
-              <TouchableOpacity
-                style={styles.myDrillsCard}
-                onPress={() => router.push('/drills')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.myDrillsIcon}>{'\u2605'}</Text>
-                <View style={styles.myDrillsInfo}>
-                  <Text style={styles.myDrillsLabel}>Drill Library</Text>
-                  <Text style={styles.myDrillsSub}>
-                    {totalDrills === 0
-                      ? 'Star drills during practice to save them'
-                      : `${totalDrills} drill${totalDrills !== 1 ? 's' : ''} saved`}
-                  </Text>
-                </View>
-                <Text style={styles.myDrillsChevron}>{'\u203A'}</Text>
+              <TouchableOpacity onPress={handleDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={20} color="#6B7280" />
               </TouchableOpacity>
-            );
-          })()}
-
-      {/* Practice History shortcut */}
-      {history.length > 0 && (
-        <TouchableOpacity
-          style={styles.myDrillsCard}
-          onPress={() => router.push('/history')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.myDrillsIcon, { color: '#1B4332' }]}>{'\u2713'}</Text>
-          <View style={styles.myDrillsInfo}>
-            <Text style={styles.myDrillsLabel}>Practice History</Text>
-            <Text style={styles.myDrillsSub}>
-              {history.length} practice{history.length !== 1 ? 's' : ''} saved
-            </Text>
+            </View>
+            {pendingImport.type === 'drill' ? (
+              <View style={styles.importBody}>
+                <Text style={styles.importDrillName}>{pendingImport.name}</Text>
+                <Text style={styles.importDrillDesc} numberOfLines={2}>{pendingImport.description}</Text>
+              </View>
+            ) : (
+              <View style={styles.importBody}>
+                <Text style={styles.importDrillName}>{pendingImport.ageGroup} Practice</Text>
+                <Text style={styles.importDrillDesc}>
+                  {pendingImport.totalMinutes} min  {'\u2022'}  {pendingImport.coachCount} coach{pendingImport.coachCount !== 1 ? 'es' : ''}
+                </Text>
+              </View>
+            )}
+            <View style={styles.importActions}>
+              <TouchableOpacity style={styles.importButtonSecondary} onPress={handleDismiss}>
+                <Text style={styles.importButtonSecondaryText}>Dismiss</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.importButtonPrimary} onPress={handleImport}>
+                <Text style={styles.importButtonPrimaryText}>Import</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          <Text style={styles.myDrillsChevron}>{'\u203A'}</Text>
-        </TouchableOpacity>
-      )}
+        )}
 
-      {/* Last practice summary — visible only if a session was generated this app lifecycle */}
-      {currentSession && (
-        <TouchableOpacity
-          style={styles.lastCard}
-          onPress={() => router.push('/practice')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.lastLabel}>Last Practice</Text>
-          <View style={styles.lastMeta}>
-            <Text style={styles.lastMeta1}>
-              {formatAgeGroup(currentSession.request.ageGroup)}
-            </Text>
-            <Text style={styles.lastMetaDot}>&#8226;</Text>
-            <Text style={styles.lastMeta1}>
-              {currentSession.selectedDrills.length} drills
-            </Text>
-            <Text style={styles.lastMetaDot}>&#8226;</Text>
-            <Text style={styles.lastMeta1}>
-              {currentSession.stationLayout.totalWallClockMinutes} min
-            </Text>
-          </View>
-        </TouchableOpacity>
-      )}
+        {isLoading ? (
+          <Text style={styles.loading}>Loading...</Text>
+        ) : (
+          <>
+            {/* Logo + Greeting + Tier */}
+            <View style={styles.greetingRow}>
+              <Image
+                source={require('../../assets/icon.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <View style={styles.greetingTextArea}>
+                <Text style={styles.greeting}>DiamondScript</Text>
+                <Text style={styles.greetingSub}>
+                  {activeTeam ? activeTeam.name : 'Practice generation for every diamond.'}
+                </Text>
+              </View>
+              <View style={[styles.tierBadge, tier === 'pro' && styles.tierBadgePro]}>
+                <Text style={[styles.tierText, tier === 'pro' && styles.tierTextPro]}>
+                  {tier === 'pro' ? 'PRO' : 'FREE'}
+                </Text>
+              </View>
+            </View>
 
-          {/* Upgrade nudge for free users */}
-          {tier === 'free' && (
+            {/* Primary CTA */}
             <TouchableOpacity
-              style={styles.upgradeNudge}
-              onPress={() => router.push('/upgrade')}
-              activeOpacity={0.7}
+              style={styles.ctaButton}
+              onPress={() => router.push('/generate')}
+              activeOpacity={0.85}
             >
-              <Text style={styles.upgradeNudgeText}>
-                &#9733; Unlock full power with <Text style={styles.upgradeNudgeBold}>Pro — $9.99/mo</Text>
-              </Text>
+              <Ionicons name="baseball-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.ctaText}>Generate Practice</Text>
             </TouchableOpacity>
-          )}
-        </>
-      )}
-    </ScrollView>
+
+            {/* Next Practice (from Season) */}
+            {nextPractice && activeSeason && (
+              <TouchableOpacity style={styles.nextPracticeCard} onPress={() => router.push('/season')} activeOpacity={0.8}>
+                <View style={styles.nextPracticeIcon}>
+                  <Ionicons name="calendar" size={18} color="#1B4332" />
+                </View>
+                <View style={styles.nextPracticeInfo}>
+                  <Text style={styles.nextPracticeLabel}>Next Practice</Text>
+                  <Text style={styles.nextPracticeDate}>
+                    {formatPracticeDate(nextPractice.date)}{nextPractice.time ? ` at ${nextPractice.time}` : ''}
+                  </Text>
+                  {nextPractice.location ? (
+                    <Text style={styles.nextPracticeLocation}>{nextPractice.location}</Text>
+                  ) : null}
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+              </TouchableOpacity>
+            )}
+
+            {/* Quick Actions Row */}
+            <View style={styles.quickActions}>
+              <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/teams')} activeOpacity={0.8}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#ECFDF5' }]}>
+                  <Ionicons name="shield-outline" size={20} color="#1B4332" />
+                </View>
+                <Text style={styles.quickActionLabel}>Teams</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/drills')} activeOpacity={0.8}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
+                  <Ionicons name="star-outline" size={20} color="#92400E" />
+                </View>
+                <Text style={styles.quickActionLabel}>Drills</Text>
+                {totalDrills > 0 && (
+                  <View style={styles.quickActionBadge}>
+                    <Text style={styles.quickActionBadgeText}>{totalDrills}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/season')} activeOpacity={0.8}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="calendar-outline" size={20} color="#1D4ED8" />
+                </View>
+                <Text style={styles.quickActionLabel}>Season</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/coaching')} activeOpacity={0.8}>
+                <View style={[styles.quickActionIcon, { backgroundColor: '#F3E8FF' }]}>
+                  <Ionicons name="people-outline" size={20} color="#7C3AED" />
+                </View>
+                <Text style={styles.quickActionLabel}>Staff</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Recent Practice Log */}
+            {history.length > 0 && (
+              <View style={styles.recentSection}>
+                <View style={styles.recentHeader}>
+                  <Text style={styles.recentTitle}>Recent Practices</Text>
+                  <TouchableOpacity onPress={() => router.push('/history')}>
+                    <Text style={styles.recentSeeAll}>See All</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {history.slice(0, 3).filter(s => s?.request).map((session, i) => (
+                  <TouchableOpacity
+                    key={session.savedAt?.toString() || i}
+                    style={styles.recentCard}
+                    onPress={() => router.push('/history')}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.recentCardLeft}>
+                      <Text style={styles.recentCardAge}>{formatAgeGroup(session.request?.ageGroup ?? 'Unknown')}</Text>
+                      <Text style={styles.recentCardMeta}>
+                        {session.selectedDrills?.length ?? 0} drills  {'\u2022'}  {session.stationLayout?.totalWallClockMinutes ?? 0} min
+                        {session.source === 'ai' ? '  \u2022  AI' : ''}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={14} color="#D1D5DB" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Upgrade nudge */}
+            {tier === 'free' && (
+              <TouchableOpacity style={styles.upgradeNudge} onPress={() => router.push('/upgrade')} activeOpacity={0.7}>
+                <Ionicons name="diamond-outline" size={16} color="#92400E" />
+                <Text style={styles.upgradeNudgeText}>
+                  Unlock full power with <Text style={styles.upgradeNudgeBold}>Pro — $9.99/mo</Text>
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+      </ScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
+  scroll: { flex: 1, backgroundColor: '#FAFBFC' },
+  container: { padding: 20 },
+  loading: { textAlign: 'center', marginTop: 80, color: '#6B7280', fontSize: 16 },
+
+  // Logo + Greeting
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+    gap: 12,
+  },
+  logo: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+  },
+  greetingTextArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
   },
-  container: {
-    padding: 24,
+  greeting: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1B4332',
+    letterSpacing: -0.5,
   },
-  loading: {
-    textAlign: 'center',
-    marginTop: 80,
+  greetingSub: {
+    fontSize: 13,
     color: '#6B7280',
-    fontSize: 16,
-  },
-  tierRow: {
-    alignItems: 'flex-end',
+    marginTop: 1,
   },
   tierBadge: {
-    backgroundColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   tierBadgePro: {
     backgroundColor: '#D4AF37',
-    shadowColor: '#D4AF37',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
   },
   tierText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#374151',
-    textTransform: 'uppercase',
+    color: '#6B7280',
     letterSpacing: 0.8,
   },
-  hero: {
-    marginTop: 48,
-    marginBottom: 48,
-    alignItems: 'center',
+  tierTextPro: {
+    color: '#FFFFFF',
   },
-  logoOuter: {
-    width: 56,
-    height: 56,
-    backgroundColor: '#1B3D2F',
-    borderRadius: 12,
+
+  // CTA
+  ctaButton: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    shadowColor: '#1B3D2F',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
-    transform: [{ rotate: '45deg' }],
-  },
-  logoInner: {
-    width: 18,
-    height: 18,
-    backgroundColor: '#D4AF37',
-  },
-  heroTitle: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: '#1B4332',
-    letterSpacing: -1,
-  },
-  heroSub: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 8,
-    letterSpacing: 0.3,
-  },
-  ctaButton: {
+    gap: 10,
     backgroundColor: '#1B4332',
     borderRadius: 16,
-    paddingVertical: 20,
-    alignItems: 'center',
+    paddingVertical: 18,
+    marginBottom: 20,
     shadowColor: '#1B4332',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
   },
   ctaText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
-  myDrillsCard: {
-    marginTop: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+
+  // Next practice
+  nextPracticeCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    shadowColor: '#1B4332',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    gap: 12,
   },
-  myDrillsIcon: {
-    fontSize: 22,
-    color: '#D4AF37',
-    width: 32,
-    height: 32,
-    textAlign: 'center',
-    lineHeight: 32,
+  nextPracticeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  myDrillsInfo: {
-    flex: 1,
+  nextPracticeInfo: { flex: 1 },
+  nextPracticeLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  myDrillsLabel: {
+  nextPracticeDate: {
     fontSize: 15,
+    fontWeight: '600',
+    color: '#1B4332',
+    marginTop: 1,
+  },
+  nextPracticeLocation: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 1,
+  },
+
+  // Quick Actions
+  quickActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 24,
+  },
+  quickAction: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+    position: 'relative',
+  },
+  quickActionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  quickActionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  quickActionBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: '#D4AF37',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  quickActionBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+
+  // Recent Practices
+  recentSection: { marginBottom: 20 },
+  recentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  recentTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  recentSeeAll: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1B4332',
+  },
+  recentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  recentCardLeft: { flex: 1 },
+  recentCardAge: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#111827',
   },
-  myDrillsSub: {
-    fontSize: 13,
-    color: '#6B7280',
+  recentCardMeta: {
+    fontSize: 12,
+    color: '#9CA3AF',
     marginTop: 2,
   },
-  myDrillsChevron: {
-    fontSize: 18,
-    color: '#9CA3AF',
-  },
 
-  // BUILD 47 FIX: Manual clipboard check button
-  refreshButton: {
-    marginTop: 16,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: '#3B82F6',
+  // Upgrade
+  upgradeNudge: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-  },
-  refreshIcon: {
-    fontSize: 18,
-    color: '#3B82F6',
-    fontWeight: '700',
-  },
-  refreshText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1D4ED8',
-  },
-
-  lastCard: {
-    marginTop: 24,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: '#1B4332',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  lastLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 6,
-  },
-  lastMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  lastMeta1: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#111827',
-  },
-  lastMetaDot: {
-    color: '#9CA3AF',
-    fontSize: 10,
-  },
-  upgradeNudge: {
-    marginTop: 32,
     backgroundColor: '#FEF3C7',
-    borderRadius: 16,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderLeftWidth: 4,
-    borderLeftColor: '#D4AF37',
-    shadowColor: '#D4AF37',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
   },
   upgradeNudgeText: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#92400E',
-    textAlign: 'center',
   },
-  upgradeNudgeBold: {
-    fontWeight: '700',
-  },
+  upgradeNudgeBold: { fontWeight: '700' },
 
-  // BUILD 47 FIX: Magic Import Card styles (enhanced visibility)
+  // Import Card
   importCard: {
-    marginVertical: 12,
+    marginBottom: 16,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 18,
+    padding: 16,
     borderWidth: 2,
-    borderColor: '#3B82F6', // Blue border for SHARED drill
+    borderColor: '#3B82F6',
     shadowColor: '#3B82F6',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25, // Increased from 0.15 for better depth
+    shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 4,
   },
+  importCardPractice: { borderColor: '#D4AF37', shadowColor: '#D4AF37' },
   importHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   sharedBadge: {
     backgroundColor: '#DBEAFE',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#3B82F6',
   },
-  sharedBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#1D4ED8',
-    letterSpacing: 0.8,
-  },
-  importClose: {
-    fontSize: 24,
-    color: '#6B7280',
-    fontWeight: '700',
-  },
-  importTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 10,
-  },
-  importDrillInfo: {
+  sharedBadgeText: { fontSize: 10, fontWeight: '700', color: '#1D4ED8', letterSpacing: 0.5 },
+  sharedBadgePractice: { backgroundColor: '#FEF3C7', borderColor: '#D4AF37' },
+  sharedBadgeTextPractice: { color: '#92400E' },
+  importBody: {
     backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 10,
+    padding: 12,
     marginBottom: 12,
   },
-  importDrillName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1B4332',
-    marginBottom: 6,
-  },
-  importDrillDesc: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 18,
-    marginBottom: 6,
-  },
-  importEquipment: {
-    fontSize: 12,
-    color: '#374151',
-    fontStyle: 'italic',
-  },
-  importWarning: {
-    fontSize: 12,
-    color: '#DC2626',
-    fontWeight: '500',
-    marginBottom: 14,
-    textAlign: 'center',
-  },
-  importActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  importButton: {
+  importDrillName: { fontSize: 15, fontWeight: '600', color: '#1B4332' },
+  importDrillDesc: { fontSize: 13, color: '#6B7280', marginTop: 3 },
+  importActions: { flexDirection: 'row', gap: 10 },
+  importButtonPrimary: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
+    backgroundColor: '#3B82F6',
+    paddingVertical: 11,
+    borderRadius: 10,
     alignItems: 'center',
   },
-  importButtonPrimary: {
-    backgroundColor: '#3B82F6',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
+  importButtonPrimaryText: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
   importButtonSecondary: {
+    flex: 1,
     backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: 'center',
   },
-  importButtonTextPrimary: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  importButtonTextSecondary: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-
-  // BUILD 49: Practice Import Card styles (gold/green accent)
-  importCardPractice: {
-    borderColor: '#D4AF37', // Gold border for SHARED PLAN
-    shadowColor: '#D4AF37',
-  },
-  sharedBadgePractice: {
-    backgroundColor: '#FEF3C7', // Gold background
-    borderColor: '#D4AF37',
-  },
-  sharedBadgeTextPractice: {
-    color: '#92400E', // Dark gold text
-  },
+  importButtonSecondaryText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
 });

@@ -17,11 +17,16 @@ const FREE_TIER_DEFAULT_INTENSITY = 3;
 export function applyTierConstraints(request: PracticeRequest, tier: SubscriptionTier): PracticeRequest {
   const caps = getTierCapabilities(tier);
 
+  // Sanitize inputs to prevent downstream math errors
+  const safeIntensity = Math.max(1, Math.min(5, request.intensity ?? FREE_TIER_DEFAULT_INTENSITY));
+  const safeAssistants = Math.max(0, request.assistantCoaches ?? 0);
+  const safeNumDrills = Math.max(1, request.numDrills ?? 4);
+
   return {
     ...request,
     subscriptionTier: tier,
-    intensity: caps.customIntensity ? request.intensity : FREE_TIER_DEFAULT_INTENSITY,
-    // Free tier forces sequential: zero assistant coaches for station splitting purposes
-    assistantCoaches: caps.stationSplitting ? request.assistantCoaches : 0,
+    intensity: caps.customIntensity ? safeIntensity : FREE_TIER_DEFAULT_INTENSITY,
+    assistantCoaches: caps.stationSplitting ? safeAssistants : 0,
+    numDrills: safeNumDrills,
   };
 }

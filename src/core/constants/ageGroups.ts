@@ -3,8 +3,27 @@ import { AgeGroup, AgeGroupDefinition } from '../../data/types';
 /**
  * Sacred ordering. Index IS the ordinal. Never sort. Never reorder.
  * Frozen at runtime — mutation throws.
+ *
+ * BUILD 100: Expanded from 5 → 7 groups.
+ *   0 — Intro (3-4): Pre-T-Ball motor skills. 30 min practices.
+ *   1 — T-Ball (5-6): Ball on tee, no live pitching. 45 min.
+ *   2 — Coach Pitch (7-8): Coach throws, real ball tracking begins. 50 min.
+ *   3 — Machine Pitch (8-9): Consistent machine strikes, swing mechanics. 55 min.
+ *   4 — Kid Pitch (9-10): Kid on the mound. Pitcher/catcher work. 60 min.
+ *   5 — Competitive (11-12): Position specialization, advanced situations. 75 min.
+ *   6 — Advanced (13-14): Full baseball, longer distances, pitch selection. 90 min.
  */
 export const AGE_GROUP_DEFINITIONS: Readonly<AgeGroupDefinition[]> = Object.freeze([
+  {
+    group: AgeGroup.INTRO,
+    minAge: 3,
+    maxAge: 4,
+    minComplexity: 1.0,
+    maxComplexity: 1.5,
+    defaultPracticeMinutes: 30,
+    warmupMinutes: 5,
+    cooldownMinutes: 5,
+  },
   {
     group: AgeGroup.T_BALL,
     minAge: 5,
@@ -16,7 +35,7 @@ export const AGE_GROUP_DEFINITIONS: Readonly<AgeGroupDefinition[]> = Object.free
     cooldownMinutes: 5,
   },
   {
-    group: AgeGroup.AGE_8U,
+    group: AgeGroup.COACH_PITCH,
     minAge: 7,
     maxAge: 8,
     minComplexity: 1.5,
@@ -26,7 +45,17 @@ export const AGE_GROUP_DEFINITIONS: Readonly<AgeGroupDefinition[]> = Object.free
     cooldownMinutes: 5,
   },
   {
-    group: AgeGroup.AGE_10U,
+    group: AgeGroup.MACHINE_PITCH,
+    minAge: 8,
+    maxAge: 9,
+    minComplexity: 1.8,
+    maxComplexity: 3.0,
+    defaultPracticeMinutes: 55,
+    warmupMinutes: 8,
+    cooldownMinutes: 5,
+  },
+  {
+    group: AgeGroup.KID_PITCH,
     minAge: 9,
     maxAge: 10,
     minComplexity: 2.2,
@@ -36,7 +65,7 @@ export const AGE_GROUP_DEFINITIONS: Readonly<AgeGroupDefinition[]> = Object.free
     cooldownMinutes: 5,
   },
   {
-    group: AgeGroup.AGE_12U,
+    group: AgeGroup.COMPETITIVE,
     minAge: 11,
     maxAge: 12,
     minComplexity: 3.0,
@@ -46,7 +75,7 @@ export const AGE_GROUP_DEFINITIONS: Readonly<AgeGroupDefinition[]> = Object.free
     cooldownMinutes: 7,
   },
   {
-    group: AgeGroup.AGE_14U,
+    group: AgeGroup.ADVANCED,
     minAge: 13,
     maxAge: 14,
     minComplexity: 3.8,

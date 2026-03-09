@@ -28,6 +28,7 @@
         "backgroundColor": "#1B4332"
       },
       "package": "com.diamondscript.app",
+      "versionCode": 91,
       "permissions": [
         "com.android.vending.BILLING"
       ]

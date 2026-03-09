@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Coach, CoachingStaff, CoachSpecialty, getCoachColor } from '../../src/data/types/coach';
 import {
@@ -196,37 +196,40 @@ export default function CoachingScreen() {
       </TouchableOpacity>
 
       {/* Name Edit Modal */}
-      <Modal visible={showNameModal} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Rename Coach</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Enter coach name"
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalButtonSecondary}
-                onPress={() => setShowNameModal(false)}
-              >
-                <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalButtonPrimary}
-                onPress={handleSaveName}
-              >
-                <Text style={styles.modalButtonPrimaryText}>Save</Text>
-              </TouchableOpacity>
+      <Modal visible={showNameModal} transparent animationType="fade" onRequestClose={() => setShowNameModal(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Rename Coach</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Enter coach name"
+                placeholderTextColor="#9CA3AF"
+                autoFocus
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalButtonSecondary}
+                  onPress={() => setShowNameModal(false)}
+                >
+                  <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.modalButtonPrimary}
+                  onPress={handleSaveName}
+                >
+                  <Text style={styles.modalButtonPrimaryText}>Save</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Specialty Edit Modal */}
-      <Modal visible={showSpecialtyModal} transparent animationType="fade">
+      <Modal visible={showSpecialtyModal} transparent animationType="fade" onRequestClose={() => setShowSpecialtyModal(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Edit Specialties</Text>

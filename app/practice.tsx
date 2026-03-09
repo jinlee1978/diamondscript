@@ -13,8 +13,9 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, Share, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, StyleSheet, Share, Alert, ActionSheetIOS, Platform } from 'react-native';
 import { Stack } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePractice, CustomDrill } from '../context/PracticeContext';
 import { Drill, PracticeSession, DrillBlock } from '../src/data/types';
@@ -31,9 +32,23 @@ import { CoachingStaff, getCoachColor } from '../src/data/types/coach';
 import { ensureTimelineWithSync } from '../src/data/storage/practiceSessionStorage';
 import { autoAssignDrillsToStaff, countUnassignedDrills, getCoachDisplayName } from '../src/logic/coachMatcher';
 
-// Display-friendly label for the age group enum value
+// BUILD 100: Display-friendly label for the age group enum value (7 groups)
 function formatAgeGroup(raw: string): string {
-  return raw.replace('AGE_', '').replace('_', '-').replace('T-BALL', 'T-Ball');
+  const labelMap: Record<string, string> = {
+    'INTRO': 'Intro (3-4)',
+    'T_BALL': 'T-Ball',
+    'COACH_PITCH': 'Coach Pitch',
+    'MACHINE_PITCH': 'Machine Pitch',
+    'KID_PITCH': 'Kid Pitch',
+    'COMPETITIVE': '11-12U',
+    'ADVANCED': '13-14U',
+    // Legacy mappings for saved sessions
+    '8U': 'Coach Pitch',
+    '10U': 'Kid Pitch',
+    '12U': '11-12U',
+    '14U': '13-14U',
+  };
+  return labelMap[raw] ?? raw.replace('AGE_', '').replace('_', '-');
 }
 
 function customToDrill(c: CustomDrill): Drill {
@@ -194,6 +209,7 @@ export default function PracticeScreen() {
     reorderDrillInTimeline,
   } = usePractice();
   const [showAddPicker, setShowAddPicker] = useState(false);
+  const [showSharePreview, setShowSharePreview] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
@@ -279,7 +295,7 @@ export default function PracticeScreen() {
       : 0;
     const helps = shortfall && proPoolSize > selectedDrills.length;
 
-    const canAdd = tier === 'pro' || request.ageGroup === 'T_BALL';
+    const canAdd = tier === 'pro' || request.ageGroup === 'T_BALL' || request.ageGroup === 'INTRO';
     const sessionDrillIds = new Set(timelineDrills.map((b) => b.drill.id));
     const drills: Drill[] = canAdd
       ? [
@@ -296,13 +312,18 @@ export default function PracticeScreen() {
     };
   }, [selectedDrills.length, request.numDrills, request.ageGroup, tier, timelineDrills, customDrills]);
 
-  const handleShare = async () => {
+  const handleShare = () => {
+    setShowSharePreview(true);
+  };
+
+  const executeShare = async () => {
+    setShowSharePreview(false);
     try {
       const practiceData = {
         type: 'practice',
         ageGroup: formatAgeGroup(request.ageGroup),
         totalMinutes: stationLayout.totalWallClockMinutes,
-        coachCount: coachGroups.length, // BUILD 73: Use coach count instead of station count
+        coachCount: coachGroups.length,
         warmupMinutes,
         cooldownMinutes,
         session: currentSession,
@@ -367,23 +388,58 @@ export default function PracticeScreen() {
   };
 
   const isPro = tier === 'pro';
-  const canEditOrder = isPro && timelineDrills.length > 1;
+  const canEditOrder = timelineDrills.length > 1;
+
+  const handleMoreMenu = () => {
+    const options = isEditMode
+      ? ['Reset to Recommended', 'Done Editing', 'Cancel']
+      : canEditOrder
+        ? ['Edit Order', 'Cancel']
+        : ['Cancel'];
+
+    const cancelIndex = options.length - 1;
+    const destructiveIndex = isEditMode ? 0 : -1;
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex: cancelIndex, destructiveButtonIndex: destructiveIndex },
+        (buttonIndex) => {
+          if (isEditMode) {
+            if (buttonIndex === 0) handleResetToRecommended();
+            else if (buttonIndex === 1) setIsEditMode(false);
+          } else {
+            if (buttonIndex === 0 && canEditOrder) setIsEditMode(true);
+          }
+        }
+      );
+    } else {
+      // Android fallback using Alert
+      if (isEditMode) {
+        Alert.alert('Options', '', [
+          { text: 'Reset to Recommended', style: 'destructive', onPress: handleResetToRecommended },
+          { text: 'Done Editing', onPress: () => setIsEditMode(false) },
+          { text: 'Cancel', style: 'cancel' },
+        ]);
+      } else if (canEditOrder) {
+        Alert.alert('Options', '', [
+          { text: 'Edit Order', onPress: () => setIsEditMode(true) },
+          { text: 'Cancel', style: 'cancel' },
+        ]);
+      }
+    }
+  };
 
   return (
     <>
     <Stack.Screen
       options={{
-        headerRight: ({ tintColor }) => (
-          <View style={{ flexDirection: 'row', gap: 16, paddingRight: 16 }}>
-            {canEditOrder && (
-              <TouchableOpacity onPress={() => setIsEditMode(!isEditMode)}>
-                <Text style={{ color: tintColor, fontSize: 15, fontWeight: '500' }}>
-                  {isEditMode ? 'Done' : 'Edit Order'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity onPress={handleShare}>
-              <Text style={{ color: tintColor, fontSize: 15, fontWeight: '500' }}>Share</Text>
+        headerRight: () => (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, paddingRight: 16 }}>
+            <TouchableOpacity onPress={handleShare} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="share-outline" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleMoreMenu} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="ellipsis-horizontal" size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         ),
@@ -462,11 +518,12 @@ export default function PracticeScreen() {
         </View>
       ))}
 
-      {/* Reset to Recommended button (shown in edit mode) */}
-      {isEditMode && canEditOrder && (
-        <TouchableOpacity style={styles.resetButton} onPress={handleResetToRecommended}>
-          <Text style={styles.resetButtonText}>Reset to Recommended Order</Text>
-        </TouchableOpacity>
+      {/* Edit mode indicator */}
+      {isEditMode && (
+        <View style={styles.editModeBar}>
+          <Ionicons name="reorder-three" size={18} color="#1B4332" />
+          <Text style={styles.editModeText}>Reordering drills — use arrows to move</Text>
+        </View>
       )}
 
       {/* Add-drill button / upgrade nudge */}
@@ -503,7 +560,7 @@ export default function PracticeScreen() {
 
     {/* Add-drill picker bottom sheet */}
     {showAddPicker && (
-      <Modal visible transparent animationType="slide">
+      <Modal visible transparent animationType="slide" onRequestClose={() => setShowAddPicker(false)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setShowAddPicker(false)}>
           <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.pickerHandle} />
@@ -542,6 +599,65 @@ export default function PracticeScreen() {
         </TouchableOpacity>
       </Modal>
     )}
+    {/* Share Preview Modal */}
+    {showSharePreview && (
+      <Modal visible transparent animationType="fade" onRequestClose={() => setShowSharePreview(false)}>
+        <TouchableOpacity
+          style={styles.shareBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowSharePreview(false)}
+        >
+          <View style={styles.sharePreviewSheet} onStartShouldSetResponder={() => true}>
+            {/* Icon */}
+            <View style={styles.shareIconCircle}>
+              <Ionicons name="share-outline" size={24} color="#1B4332" />
+            </View>
+
+            <Text style={styles.sharePreviewTitle}>Share Practice Plan</Text>
+
+            {/* Summary pill */}
+            <View style={styles.sharePreviewSummary}>
+              <Text style={styles.sharePreviewLabel}>{formatAgeGroup(request.ageGroup)}</Text>
+              <Text style={styles.sharePreviewMeta}>
+                {stationLayout.totalWallClockMinutes} min  {'\u2022'}  {timelineDrills.length} drills  {'\u2022'}  {coachGroups.length} coach{coachGroups.length !== 1 ? 'es' : ''}
+              </Text>
+            </View>
+
+            {/* Divider */}
+            <View style={styles.shareDivider} />
+
+            {/* How it works */}
+            <Text style={styles.shareHowItWorks}>How it works</Text>
+
+            <View style={styles.sharePreviewSteps}>
+              <View style={styles.shareStep}>
+                <View style={styles.shareStepNumber}><Text style={styles.shareStepNumberText}>1</Text></View>
+                <Text style={styles.shareStepText}>Send via text, email, or any app</Text>
+              </View>
+              <View style={styles.shareStep}>
+                <View style={styles.shareStepNumber}><Text style={styles.shareStepNumberText}>2</Text></View>
+                <Text style={styles.shareStepText}>Other coach copies the message</Text>
+              </View>
+              <View style={styles.shareStep}>
+                <View style={styles.shareStepNumber}><Text style={styles.shareStepNumberText}>3</Text></View>
+                <Text style={styles.shareStepText}>Plan imports automatically in DiamondScript</Text>
+              </View>
+            </View>
+
+            {/* Actions */}
+            <TouchableOpacity style={styles.sharePreviewButton} onPress={executeShare} activeOpacity={0.85}>
+              <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.sharePreviewButtonText}>Share Now</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.sharePreviewCancel} onPress={() => setShowSharePreview(false)}>
+              <Text style={styles.sharePreviewCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    )}
+
     <Toast
       message={toastMessage}
       visible={toastVisible}
@@ -554,7 +670,7 @@ export default function PracticeScreen() {
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FAFBFC',
   },
   container: {
     padding: 20,
@@ -719,19 +835,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Reset to Recommended button
-  resetButton: {
-    borderWidth: 1,
-    borderColor: '#9CA3AF',
-    borderRadius: 12,
-    paddingVertical: 12,
+  // Edit mode indicator bar
+  editModeBar: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#ECFDF5',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     marginBottom: 16,
-    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
   },
-  resetButtonText: {
-    color: '#6B7280',
-    fontSize: 14,
+  editModeText: {
+    color: '#1B4332',
+    fontSize: 13,
     fontWeight: '500',
   },
 
@@ -818,5 +938,138 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#059669',
+  },
+
+  // Share preview modal
+  shareBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  sharePreviewSheet: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 28,
+    paddingTop: 32,
+    paddingBottom: 24,
+    paddingHorizontal: 32,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 32,
+    elevation: 12,
+  },
+  shareIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  sharePreviewTitle: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 20,
+  },
+  sharePreviewSummary: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  sharePreviewLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1B4332',
+  },
+  sharePreviewMeta: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 3,
+  },
+  shareDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    width: '100%',
+    marginVertical: 20,
+  },
+  shareHowItWorks: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    alignSelf: 'flex-start',
+    marginBottom: 16,
+  },
+  sharePreviewSteps: {
+    width: '100%',
+    gap: 16,
+    marginBottom: 28,
+  },
+  shareStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  shareStepNumber: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#1B4332',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareStepNumberText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  shareStepText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 19,
+  },
+  sharePreviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#1B4332',
+    borderRadius: 14,
+    paddingVertical: 15,
+    width: '100%',
+    shadowColor: '#1B4332',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  sharePreviewButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  sharePreviewCancel: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 6,
+  },
+  sharePreviewCancelText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

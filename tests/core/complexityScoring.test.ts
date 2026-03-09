@@ -4,19 +4,19 @@ import { AgeGroup } from '../../src/data/types';
 
 describe('calculateTargetComplexity', () => {
   test('Scenario A: 10U, 1yr → TC ≈ 2.695', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_10U);
+    const def = getAgeGroupDefinition(AgeGroup.KID_PITCH);
     const tc = calculateTargetComplexity(def, 1);
     expect(tc).toBeCloseTo(2.695, 3);
   });
 
   test('Scenario B: 12U, 4yr → TC ≈ 4.137', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_12U);
+    const def = getAgeGroupDefinition(AgeGroup.COMPETITIVE);
     const tc = calculateTargetComplexity(def, 4);
     expect(tc).toBeCloseTo(4.137, 3);
   });
 
   test('TC is always within [ageMin, ageMax] for all age groups and experience levels', () => {
-    const ageGroups = [AgeGroup.T_BALL, AgeGroup.AGE_8U, AgeGroup.AGE_10U, AgeGroup.AGE_12U, AgeGroup.AGE_14U];
+    const ageGroups = [AgeGroup.INTRO, AgeGroup.T_BALL, AgeGroup.COACH_PITCH, AgeGroup.MACHINE_PITCH, AgeGroup.KID_PITCH, AgeGroup.COMPETITIVE, AgeGroup.ADVANCED];
 
     for (const group of ageGroups) {
       const def = getAgeGroupDefinition(group);
@@ -29,17 +29,17 @@ describe('calculateTargetComplexity', () => {
   });
 
   test('exp=0 produces TC = ageMin (EWF is 0)', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_12U);
+    const def = getAgeGroupDefinition(AgeGroup.COMPETITIVE);
     expect(calculateTargetComplexity(def, 0)).toBe(def.minComplexity);
   });
 
   test('exp=5 produces TC = ageMax (EWF is 1)', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_12U);
+    const def = getAgeGroupDefinition(AgeGroup.COMPETITIVE);
     expect(calculateTargetComplexity(def, 5)).toBe(def.maxComplexity);
   });
 
   test('split-logic: Beginner 12U and Advanced 12U produce different TC', () => {
-    const def = getAgeGroupDefinition(AgeGroup.AGE_12U);
+    const def = getAgeGroupDefinition(AgeGroup.COMPETITIVE);
     const beginnerTC = calculateTargetComplexity(def, 0);
     const advancedTC = calculateTargetComplexity(def, 5);
     expect(beginnerTC).not.toBe(advancedTC);

@@ -7,7 +7,7 @@
 
 import { generateAIPracticePlan, AIPracticeRequest, AIPracticePlan } from '../../src/services/aiPracticeService';
 import { supabase } from '../../src/config/supabase';
-import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Mock modules
 jest.mock('../../src/config/supabase', () => ({
@@ -22,9 +22,12 @@ jest.mock('../../src/config/supabase', () => ({
   },
 }));
 
-jest.mock('expo-secure-store', () => ({
-  setItemAsync: jest.fn(),
-  getItemAsync: jest.fn(),
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    setItem: jest.fn(),
+    getItem: jest.fn(),
+  },
 }));
 
 // Mock global __DEV__ flag
@@ -86,7 +89,7 @@ describe('generateAIPracticePlan - Auto-Repair Authentication', () => {
       });
 
       // SecureStore save succeeds
-      (SecureStore.setItemAsync as jest.Mock).mockResolvedValue(undefined);
+      (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
 
       // Edge Function succeeds
       (supabase.functions.invoke as jest.Mock).mockResolvedValue({
@@ -100,7 +103,7 @@ describe('generateAIPracticePlan - Auto-Repair Authentication', () => {
       // ASSERT
       expect(supabase.auth.getSession).toHaveBeenCalledTimes(1);
       expect(supabase.auth.signInAnonymously).toHaveBeenCalledTimes(1);
-      expect(SecureStore.setItemAsync).toHaveBeenCalledWith('supabase_user_id', 'user-abc-123');
+      expect(AsyncStorage.setItem).toHaveBeenCalledWith('@diamondscript/supabase_user_id', 'user-abc-123');
       expect(supabase.functions.invoke).toHaveBeenCalledWith('generate-practice-plan', {
         body: mockRequest,
         headers: {
@@ -197,7 +200,7 @@ describe('generateAIPracticePlan - Auto-Repair Authentication', () => {
   });
 
   describe('Scenario 4: Resilience - SecureStore Failure → Non-Fatal', () => {
-    it('should continue successfully even if SecureStore.setItemAsync() fails', async () => {
+    it('should continue successfully even if AsyncStorage.setItem() fails', async () => {
       // ARRANGE: No session
       (supabase.auth.getSession as jest.Mock).mockResolvedValue({
         data: { session: null },
@@ -216,7 +219,7 @@ describe('generateAIPracticePlan - Auto-Repair Authentication', () => {
       });
 
       // SecureStore throws error
-      (SecureStore.setItemAsync as jest.Mock).mockRejectedValue(
+      (AsyncStorage.setItem as jest.Mock).mockRejectedValue(
         new Error('SecureStore unavailable')
       );
 
@@ -231,7 +234,7 @@ describe('generateAIPracticePlan - Auto-Repair Authentication', () => {
 
       // ASSERT - Should succeed despite SecureStore failure
       expect(result).toEqual(mockAIPlan);
-      expect(SecureStore.setItemAsync).toHaveBeenCalled();
+      expect(AsyncStorage.setItem).toHaveBeenCalled();
       expect(supabase.functions.invoke).toHaveBeenCalled();
     });
   });
@@ -588,7 +591,7 @@ describe('generateAIPracticePlan - Auto-Repair Authentication', () => {
         error: null,
       });
 
-      (SecureStore.setItemAsync as jest.Mock).mockResolvedValue(undefined);
+      (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
 
       // Edge Function succeeds
       (supabase.functions.invoke as jest.Mock).mockResolvedValue({
@@ -661,8 +664,8 @@ describe('generateAIPracticePlan - Auto-Repair Authentication', () => {
         };
       });
 
-      (SecureStore.setItemAsync as jest.Mock).mockImplementation(async () => {
-        sessionCheckOrder.push('setItemAsync');
+      (AsyncStorage.setItem as jest.Mock).mockImplementation(async () => {
+        sessionCheckOrder.push('setItem');
         return undefined;
       });
 
@@ -678,7 +681,7 @@ describe('generateAIPracticePlan - Auto-Repair Authentication', () => {
       expect(sessionCheckOrder).toEqual([
         'getSession',
         'signInAnonymously',
-        'setItemAsync',
+        'setItem',
         'invoke',
       ]);
     });

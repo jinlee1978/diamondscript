@@ -98,7 +98,7 @@ describe('Regression: User Actions', () => {
     it('should serialize practice session without errors', () => {
       const mockSession: PracticeSession = {
         request: {
-          ageGroup: AgeGroup.AGE_10U,
+          ageGroup: AgeGroup.KID_PITCH,
           experienceLevel: 2,
           intensity: 3,
           numDrills: 4,
@@ -114,7 +114,7 @@ describe('Regression: User Actions', () => {
             complexityScore: 3.0,
             physicalIntensity: 3,
             category: 'hitting',
-            ageGroupCompatibility: [AgeGroup.AGE_10U],
+            ageGroupCompatibility: [AgeGroup.KID_PITCH],
             minPlayers: 6,
             subscriptionTier: 'free',
             equipment: ['bat'],
@@ -133,7 +133,7 @@ describe('Regression: User Actions', () => {
                     complexityScore: 3.0,
                     physicalIntensity: 3,
                     category: 'hitting',
-                    ageGroupCompatibility: [AgeGroup.AGE_10U],
+                    ageGroupCompatibility: [AgeGroup.KID_PITCH],
                     minPlayers: 6,
                     subscriptionTier: 'free',
                     equipment: ['bat'],
@@ -171,7 +171,7 @@ describe('Regression: User Actions', () => {
     it('should deserialize practice session correctly', () => {
       const mockSession: PracticeSession = {
         request: {
-          ageGroup: AgeGroup.AGE_10U,
+          ageGroup: AgeGroup.KID_PITCH,
           experienceLevel: 2,
           intensity: 3,
           numDrills: 4,
@@ -194,7 +194,7 @@ describe('Regression: User Actions', () => {
 
       // Should successfully deserialize
       expect(decoded).not.toBeNull();
-      expect(decoded!.request.ageGroup).toBe(AgeGroup.AGE_10U);
+      expect(decoded!.request.ageGroup).toBe(AgeGroup.KID_PITCH);
       expect(decoded!.warmupMinutes).toBe(10);
       expect(decoded!.cooldownMinutes).toBe(10);
     });
@@ -202,7 +202,7 @@ describe('Regression: User Actions', () => {
     it('should generate valid deep link', () => {
       const mockSession: PracticeSession = {
         request: {
-          ageGroup: AgeGroup.AGE_10U,
+          ageGroup: AgeGroup.KID_PITCH,
           experienceLevel: 2,
           intensity: 3,
           numDrills: 4,
@@ -261,7 +261,7 @@ describe('Regression: User Actions', () => {
     it('should handle share serialization without errors', () => {
       const mockSession: PracticeSession = {
         request: {
-          ageGroup: AgeGroup.AGE_10U,
+          ageGroup: AgeGroup.KID_PITCH,
           experienceLevel: 2,
           intensity: 3,
           numDrills: 4,

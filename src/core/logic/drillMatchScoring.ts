@@ -26,10 +26,12 @@ export function calculateDrillMatchScore(
     1.0 - Math.abs(drillComplexity - targetComplexity) / MAX_COMPLEXITY_DISTANCE,
   );
 
-  const intensityMatch =
-    1.0 - Math.abs(drillIntensity - requestedIntensity) / INTENSITY_RANGE;
+  const intensityMatch = Math.max(
+    0,
+    1.0 - Math.abs(drillIntensity - requestedIntensity) / INTENSITY_RANGE,
+  );
 
   const categoryBalance = applyCategoryBalanceBonus(drillCategory, categoryCountsInSelection);
 
-  return ALPHA * proximityScore + BETA * intensityMatch + GAMMA * categoryBalance;
+  return Math.min(1.0, ALPHA * proximityScore + BETA * intensityMatch + GAMMA * categoryBalance);
 }

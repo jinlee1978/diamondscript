@@ -287,7 +287,7 @@ const DrillCard = React.memo(function DrillCard({
       )}
 
       {/* Swap-picker bottom sheet */}
-      {showPicker && <Modal visible transparent animationType="slide">
+      {showPicker && <Modal visible transparent animationType="slide" onRequestClose={() => setShowPicker(false)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setShowPicker(false)}>
           <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.pickerHandle} />
@@ -324,7 +324,7 @@ const DrillCard = React.memo(function DrillCard({
 
       {/* BUILD 70: Coach Picker Modal */}
       {showCoachPicker && (
-        <Modal visible transparent animationType="slide">
+        <Modal visible transparent animationType="slide" onRequestClose={() => setShowCoachPicker(false)}>
           <TouchableOpacity
             style={styles.backdrop}
             activeOpacity={1}

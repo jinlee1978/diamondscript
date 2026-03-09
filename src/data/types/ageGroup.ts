@@ -1,10 +1,18 @@
-/** Sacred ordering. Index IS the ordinal. Never sort or reorder. */
+/**
+ * Sacred ordering. Index IS the ordinal. Never sort or reorder.
+ *
+ * BUILD 100: Expanded from 5 → 7 groups.
+ * Added INTRO (3-4) below T-Ball and MACHINE_PITCH (8-9) between Coach Pitch and Kid Pitch.
+ * Existing ordinals shifted — all downstream lookups use the enum, not raw indices.
+ */
 export enum AgeGroup {
+  INTRO = 'INTRO',
   T_BALL = 'T_BALL',
-  AGE_8U = '8U',
-  AGE_10U = '10U',
-  AGE_12U = '12U',
-  AGE_14U = '14U',
+  COACH_PITCH = 'COACH_PITCH',
+  MACHINE_PITCH = 'MACHINE_PITCH',
+  KID_PITCH = 'KID_PITCH',
+  COMPETITIVE = 'COMPETITIVE',
+  ADVANCED = 'ADVANCED',
 }
 
 export interface AgeGroupDefinition {

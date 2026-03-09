@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { usePractice } from '../../context/PracticeContext';
 import { AgeGroup } from '../../src/data/types';
 import AgeGroupPicker from '../../components/AgeGroupPicker';
@@ -12,6 +13,8 @@ import { filterCandidates } from '../../src/core/engine/drillSelector';
 import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
 // BUILD 68: Use Staff Registry instead of manual coach names
 import { loadCoachingStaff } from '../../src/data/storage/coachingStorage';
+// BUILD 100: Auto-fill from active team profile
+import { getActiveTeamProfile } from '../../src/data/storage/teamProfileStorage';
 
 // Human-readable labels for experience levels
 const EXPERIENCE_LABELS: Record<number, string> = {
@@ -29,13 +32,15 @@ export default function SetupScreen() {
   const { tier, lastRequest, generateSession, showPaywall, paywallTrigger, closePaywall } = usePractice();
 
   // Local form state, pre-filled from last request
-  const [ageGroup, setAgeGroup] = useState<AgeGroup>(lastRequest?.ageGroup ?? AgeGroup.AGE_10U);
+  const [ageGroup, setAgeGroup] = useState<AgeGroup>(lastRequest?.ageGroup ?? AgeGroup.KID_PITCH);
   const [experience, setExperience] = useState(lastRequest?.experienceLevel ?? 2);
   const [intensity, setIntensity] = useState(lastRequest?.intensity ?? 3);
   const [numDrills, setNumDrills] = useState(lastRequest?.numDrills ?? 4);
   const [assistants, setAssistants] = useState(lastRequest?.assistantCoaches ?? 0);
 
   // BUILD 68: Coach names now come from Staff Registry (removed manual input)
+  // BUILD 100: Track active team name for display
+  const [activeTeamName, setActiveTeamName] = useState<string | null>(null);
 
   // Sync when lastRequest loads from AsyncStorage
   useEffect(() => {
@@ -48,8 +53,25 @@ export default function SetupScreen() {
     }
   }, [lastRequest]);
 
-  // Free tier caps non-T-Ball age groups at 2 drills; T-Ball is limited only by catalog size
-  const isTBall = ageGroup === AgeGroup.T_BALL;
+  // BUILD 100: Auto-fill from active team profile on focus
+  useFocusEffect(
+    React.useCallback(() => {
+      getActiveTeamProfile().then(team => {
+        if (team) {
+          setAgeGroup(team.ageGroup);
+          setExperience(team.experienceLevel);
+          setIntensity(team.intensity);
+          setAssistants(team.assistantCoaches);
+          setActiveTeamName(team.name);
+        } else {
+          setActiveTeamName(null);
+        }
+      });
+    }, [])
+  );
+
+  // Free tier caps older age groups at 2 drills; Intro and T-Ball are limited only by catalog size
+  const isTBall = ageGroup === AgeGroup.T_BALL || ageGroup === AgeGroup.INTRO;
   const availableDrills = filterCandidates(SEED_DRILL_CATALOG, ageGroup, tier).length;
   const proAvailable = filterCandidates(SEED_DRILL_CATALOG, ageGroup, 'pro').length;
   const effectiveMax = tier === 'free' && !isTBall ? Math.min(2, availableDrills) : availableDrills;
@@ -61,7 +83,7 @@ export default function SetupScreen() {
   // Clamp numDrills down when switching to an age group with a smaller effective max
   useEffect(() => {
     const available = filterCandidates(SEED_DRILL_CATALOG, ageGroup, tier).length;
-    const isTB = ageGroup === AgeGroup.T_BALL;
+    const isTB = ageGroup === AgeGroup.T_BALL || ageGroup === AgeGroup.INTRO;
     const max = Math.min(6, tier === 'free' && !isTB ? Math.min(2, available) : available);
     if (numDrills > max) setNumDrills(max);
   }, [ageGroup, tier]);
@@ -102,6 +124,15 @@ export default function SetupScreen() {
         style={styles.scroll}
         contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24 }]}
       >
+        {/* BUILD 100: Active team indicator */}
+        {activeTeamName && (
+          <View style={styles.teamBanner}>
+            <Text style={styles.teamBannerText}>
+              {activeTeamName}
+            </Text>
+          </View>
+        )}
+
         {/* Age Group */}
         <View style={styles.section}>
           <AgeGroupPicker value={ageGroup} onChange={setAgeGroup} />
@@ -197,6 +228,21 @@ const styles = StyleSheet.create({
   container: {
     padding: 24,
     paddingBottom: 48,
+  },
+  teamBanner: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    alignItems: 'center',
+  },
+  teamBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1B4332',
   },
   section: {
     marginBottom: 8,

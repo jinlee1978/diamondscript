@@ -44,12 +44,14 @@ import { getSubscriptionInfo, initiateUpgrade, restorePurchases, addCustomerInfo
 import { useDrills, CustomDrill } from './DrillsContext';
 import { captureException } from '../src/config/sentry';
 import { flattenStationsToTimeline, manuallyAssignDrill as manuallyAssignDrillUtil } from '../src/logic/coachMatcher';
+// BUILD 101: Generation tracking for monetization
+import { incrementGenerationCount, canFreeUserGenerate, FREE_GENERATION_LIMIT } from '../src/data/storage/generationTracker';
 
 const STORAGE_KEY = '@diamondscript/lastRequest';
 const HISTORY_KEY = '@diamondscript/history';
 
-// BUILD 81: Free tier history limit (Pro gets unlimited)
-const FREE_HISTORY_LIMIT = 2;
+// BUILD 101: Free tier history limit raised (was 2, now 5 to match UI display)
+const FREE_HISTORY_LIMIT = 5;
 
 export interface HistoryEntry {
   session: PracticeSession;
@@ -283,7 +285,7 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
   // FIX: Security Criterion 2 - Load persisted request WITHOUT tier (tier from RC only)
   useEffect(() => {
     const defaultRequest: PracticeRequest = {
-      ageGroup: AgeGroup.AGE_10U,
+      ageGroup: AgeGroup.KID_PITCH,
       experienceLevel: 2,
       intensity: 3,
       numDrills: 4,
@@ -726,9 +728,23 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [tier, history.length, openPaywall]);
 
+  // BUILD 101: Track remaining free generations for UI display
+  const [freeGenerationsLeft, setFreeGenerationsLeft] = useState(FREE_GENERATION_LIMIT);
+
+  // Load generation count on mount
+  useEffect(() => {
+    canFreeUserGenerate().then((canGenerate) => {
+      // Refresh remaining count
+      import('../src/data/storage/generationTracker').then(({ getRemainingFreeGenerations }) => {
+        getRemainingFreeGenerations().then(setFreeGenerationsLeft);
+      });
+    });
+  }, []);
+
   const generateSession = useCallback((request: PracticeRequest, coachNames?: string[]): PracticeSession | null => {
-    // BUILD 81: History gate - check if free user can save more practices
-    if (tier === SubscriptionTier.FREE && history.length >= FREE_HISTORY_LIMIT) {
+    // BUILD 101: Generation gate - free users get 3 plans, then paywall
+    // (async check is non-blocking; we use cached freeGenerationsLeft for instant gating)
+    if (tier === SubscriptionTier.FREE && freeGenerationsLeft <= 0) {
       openPaywall('history_limit');
       return null;
     }
@@ -754,6 +770,15 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
     setLastRequest(sanitized);
     setCurrentSession(session);
 
+    // BUILD 101: Increment generation counter for free users
+    if (tier === SubscriptionTier.FREE) {
+      incrementGenerationCount().then(() => {
+        import('../src/data/storage/generationTracker').then(({ getRemainingFreeGenerations }) => {
+          getRemainingFreeGenerations().then(setFreeGenerationsLeft);
+        });
+      });
+    }
+
     const entry: HistoryEntry = { session, savedAt: Date.now() };
     setHistory((prev) => {
       const next = [entry, ...prev];
@@ -762,7 +787,7 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
     });
 
     return session;
-  }, [tier, history.length, openPaywall]);
+  }, [tier, freeGenerationsLeft, openPaywall]);
 
   /**
    * BUILD 86: SECURITY FIX - No optimistic tier updates

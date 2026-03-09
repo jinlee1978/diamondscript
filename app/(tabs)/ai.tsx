@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import { usePractice } from '../../context/PracticeContext';
 import { AgeGroup } from '../../src/data/types';
@@ -10,13 +10,15 @@ import { SubscriptionTier } from '../../src/subscription/tiers';
 import Stepper from '../../components/Stepper';
 import PaywallModal from '../../components/PaywallModal';
 import { generateAIPracticePlan, convertAIPlanToPracticeSession } from '../../src/services/aiPracticeService';
+// BUILD 100: Auto-fill from active team profile
+import { getActiveTeamProfile } from '../../src/data/storage/teamProfileStorage';
 
 export default function AILabScreen() {
   const router = useRouter();
   const { tier, importPractice, aiCooldownUntil, setAiCooldownUntil, openPaywall, showPaywall, paywallTrigger, closePaywall } = usePractice();
 
   // Form state - BUILD 59: Restored Intensity (1-5) and Assistant Coaches
-  const [ageGroup, setAgeGroup] = useState<AgeGroup>(AgeGroup.AGE_10U);
+  const [ageGroup, setAgeGroup] = useState<AgeGroup>(AgeGroup.KID_PITCH);
   const [experience, setExperience] = useState(2);
   const [focusArea, setFocusArea] = useState('Hitting');
   const [durationText, setDurationText] = useState('60'); // BUILD 62: String for TextInput
@@ -30,6 +32,9 @@ export default function AILabScreen() {
 
   // BUILD 67: Auth handled automatically by Auto-Repair logic in generateAIPracticePlan()
 
+  // BUILD 100: Active team name for display
+  const [activeTeamName, setActiveTeamName] = useState<string | null>(null);
+
   // BUILD 60: NetInfo connectivity guard
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -37,6 +42,23 @@ export default function AILabScreen() {
     });
     return () => unsubscribe();
   }, []);
+
+  // BUILD 100: Auto-fill from active team profile on focus
+  useFocusEffect(
+    useCallback(() => {
+      getActiveTeamProfile().then(team => {
+        if (team) {
+          setAgeGroup(team.ageGroup);
+          setExperience(team.experienceLevel);
+          setIntensity(team.intensity);
+          setAssistantCoaches(team.assistantCoaches);
+          setActiveTeamName(team.name);
+        } else {
+          setActiveTeamName(null);
+        }
+      });
+    }, [])
+  );
 
   const getButtonState = () => {
     if (!isOnline) {
@@ -73,11 +95,17 @@ export default function AILabScreen() {
 
     setIsGenerating(true);
     try {
-      // Map AgeGroup enum to string format
-      const ageGroupString = ageGroup === AgeGroup.T_BALL ? 'T-Ball' :
-                             ageGroup === AgeGroup.AGE_8U ? '8U' :
-                             ageGroup === AgeGroup.AGE_10U ? '10U' :
-                             ageGroup === AgeGroup.AGE_12U ? '12U' : '14U';
+      // BUILD 100: Map AgeGroup enum to string format for Gemini
+      const ageGroupStringMap: Record<AgeGroup, string> = {
+        [AgeGroup.INTRO]: 'Intro (3-4)',
+        [AgeGroup.T_BALL]: 'T-Ball (5-6)',
+        [AgeGroup.COACH_PITCH]: 'Coach Pitch (7-8)',
+        [AgeGroup.MACHINE_PITCH]: 'Machine Pitch (8-9)',
+        [AgeGroup.KID_PITCH]: 'Kid Pitch (9-10)',
+        [AgeGroup.COMPETITIVE]: 'Competitive (11-12)',
+        [AgeGroup.ADVANCED]: 'Advanced (13-14)',
+      };
+      const ageGroupString = ageGroupStringMap[ageGroup];
 
       // Map intensity to string format for service
       const intensityMap = { 1: 'rec', 2: 'rec', 3: 'travel', 4: 'competitive', 5: 'competitive' } as const;
@@ -159,37 +187,58 @@ export default function AILabScreen() {
               </Text>
             </View>
 
-            {/* Age Group Picker */}
+            {/* BUILD 100: Active team indicator */}
+            {activeTeamName && (
+              <View style={styles.teamBanner}>
+                <Text style={styles.teamBannerText}>
+                  {activeTeamName}
+                </Text>
+              </View>
+            )}
+
+            {/* Age Group Picker — BUILD 100: 7 groups, horizontal scroll */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Age Group</Text>
-              <View style={styles.ageGroupRow}>
-                {[
-                  { value: AgeGroup.T_BALL, label: 'T-Ball' },
-                  { value: AgeGroup.AGE_8U, label: '8U' },
-                  { value: AgeGroup.AGE_10U, label: '10U' },
-                  { value: AgeGroup.AGE_12U, label: '12U' },
-                  { value: AgeGroup.AGE_14U, label: '14U' },
-                ].map((option) => (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[
-                      styles.ageGroupButton,
-                      ageGroup === option.value && styles.ageGroupButtonActive,
-                    ]}
-                    onPress={() => setAgeGroup(option.value)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.ageGroupRow}>
+                  {[
+                    { value: AgeGroup.INTRO, label: 'Intro', sub: '3-4' },
+                    { value: AgeGroup.T_BALL, label: 'T-Ball', sub: '5-6' },
+                    { value: AgeGroup.COACH_PITCH, label: 'Coach', sub: '7-8' },
+                    { value: AgeGroup.MACHINE_PITCH, label: 'Machine', sub: '8-9' },
+                    { value: AgeGroup.KID_PITCH, label: 'Kid Pitch', sub: '9-10' },
+                    { value: AgeGroup.COMPETITIVE, label: '11-12U', sub: '11-12' },
+                    { value: AgeGroup.ADVANCED, label: '13-14U', sub: '13-14' },
+                  ].map((option) => (
+                    <TouchableOpacity
+                      key={option.value}
                       style={[
-                        styles.ageGroupButtonText,
-                        ageGroup === option.value && styles.ageGroupButtonTextActive,
+                        styles.ageGroupButton,
+                        ageGroup === option.value && styles.ageGroupButtonActive,
                       ]}
+                      onPress={() => setAgeGroup(option.value)}
+                      activeOpacity={0.7}
                     >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                      <Text
+                        style={[
+                          styles.ageGroupButtonText,
+                          ageGroup === option.value && styles.ageGroupButtonTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.ageGroupSubText,
+                          ageGroup === option.value && styles.ageGroupSubTextActive,
+                        ]}
+                      >
+                        {option.sub}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
             </View>
 
             {/* Experience Level */}
@@ -348,6 +397,21 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     lineHeight: 20,
   },
+  teamBanner: {
+    backgroundColor: '#ECFDF5',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    alignItems: 'center',
+  },
+  teamBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1B4332',
+  },
   inputGroup: {
     marginBottom: 16,
   },
@@ -376,12 +440,21 @@ const styles = StyleSheet.create({
     borderColor: '#D4AF37', // BUILD 59: Gold
   },
   ageGroupButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#6B7280',
   },
   ageGroupButtonTextActive: {
     color: '#FFFFFF',
+  },
+  ageGroupSubText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#9CA3AF',
+    marginTop: 1,
+  },
+  ageGroupSubTextActive: {
+    color: '#86EFAC',
   },
   experienceLabel: {
     textAlign: 'right',

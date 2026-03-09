@@ -327,6 +327,11 @@ async function callGeminiAPI(
  * - Technical style: Active verbs, no motivation/leadership fluff
  * - Focus: 100% physical setup and mechanical execution
  */
+/**
+ * BUILD 100: Updated for 7 age groups (Intro through Advanced).
+ * Age group strings now include descriptions to help Gemini generate
+ * age-appropriate content.
+ */
 function buildPrompt(request: GeneratePlanRequest): string {
   const experienceLabels = ['First Year', 'Beginner', 'Developing', 'Intermediate', 'Advanced', 'Veteran'];
   const experienceLabel = experienceLabels[request.experienceLevel] || 'Intermediate';
@@ -337,6 +342,18 @@ function buildPrompt(request: GeneratePlanRequest): string {
     competitive: 'highly competitive (tournament prep)',
   };
   const intensityDesc = intensityDescriptions[request.intensity];
+
+  // BUILD 100: Age-specific constraints for the AI
+  const ageConstraints: Record<string, string> = {
+    'Intro (3-4)': 'Ages 3-4. Pre-T-Ball. No live pitching, no gloves required. Pure motor skills: rolling balls, running bases, throwing underhand at targets. Max 30 min practice, drills max 5 min each. Keep it playful.',
+    'T-Ball (5-6)': 'Ages 5-6. Ball on tee only, no live pitching. Basic motor fundamentals: swing mechanics, fielding ground balls, base running. Max 45 min practice.',
+    'Coach Pitch (7-8)': 'Ages 7-8. Coach throws underhand or overhand. Ball tracking and swing timing emerge. Basic defensive positioning. Max 50 min practice.',
+    'Machine Pitch (8-9)': 'Ages 8-9. Pitching machine delivers consistent strikes. Focus on swing mechanics, pitch tracking, and fielding live batted balls. Max 55 min practice.',
+    'Kid Pitch (9-10)': 'Ages 9-10. Kids pitch to each other. Include pitcher/catcher work, defensive positioning, situational awareness. Max 60 min practice.',
+    'Competitive (11-12)': 'Ages 11-12. Position specialization begins. Lead-offs, stealing, advanced situational play, cut-offs. Max 75 min practice.',
+    'Advanced (13-14)': 'Ages 13-14. Full baseball. Longer distances, pitch selection, advanced base running, relay plays. Max 90 min practice.',
+  };
+  const ageConstraint = ageConstraints[request.ageGroup] || '';
 
   const customInstructions = request.userInstructions
     ? `\n\n**COACH'S SPECIAL INSTRUCTIONS:**\n${request.userInstructions}\n\nIncorporate these specific requests into the practice plan where applicable.`
@@ -386,6 +403,9 @@ ACTION: • [verb] [specific action] • [verb] [specific action] • [verb] [sp
   ]
 }
 
+**AGE GROUP CONTEXT:**
+${ageConstraint}
+
 **RULES:**
 - 3-5 sections total
 - 1-3 drills per section
@@ -393,6 +413,7 @@ ACTION: • [verb] [specific action] • [verb] [specific action] • [verb] [sp
 - Equipment arrays required (use ["none"] if no equipment)
 - Focus on ${request.focusArea}
 - Age-appropriate for ${request.ageGroup}
+- Respect the age group constraints above (max practice time, allowed activities)
 
 Return ONLY valid JSON. No markdown, no code blocks, no extra text.`;
 }

@@ -9,7 +9,7 @@ describe('drillSelector — integration', () => {
 
     expect(session.selectedDrills).toHaveLength(4);
     for (const drill of session.selectedDrills) {
-      expect(drill.ageGroupCompatibility).toContain(AgeGroup.AGE_10U);
+      expect(drill.ageGroupCompatibility).toContain(AgeGroup.KID_PITCH);
     }
   });
 
@@ -23,7 +23,7 @@ describe('drillSelector — integration', () => {
 
     expect(session.selectedDrills).toHaveLength(4);
     for (const drill of session.selectedDrills) {
-      expect(drill.ageGroupCompatibility).toContain(AgeGroup.AGE_12U);
+      expect(drill.ageGroupCompatibility).toContain(AgeGroup.COMPETITIVE);
     }
   });
 

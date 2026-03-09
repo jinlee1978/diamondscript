@@ -2,7 +2,7 @@ import { AgeGroup, PracticeRequest } from '../../src/data/types';
 
 /** Scenario A: 10U / 1yr experience / Intensity 3 / 1 assistant coach */
 export const SCENARIO_A: PracticeRequest = {
-  ageGroup: AgeGroup.AGE_10U,
+  ageGroup: AgeGroup.KID_PITCH,
   experienceLevel: 1,
   intensity: 3,
   numDrills: 4,
@@ -12,7 +12,7 @@ export const SCENARIO_A: PracticeRequest = {
 
 /** Scenario B: 12U / 4yr experience / Intensity 4 / 0 assistant coaches */
 export const SCENARIO_B: PracticeRequest = {
-  ageGroup: AgeGroup.AGE_12U,
+  ageGroup: AgeGroup.COMPETITIVE,
   experienceLevel: 4,
   intensity: 4,
   numDrills: 4,
@@ -22,7 +22,7 @@ export const SCENARIO_B: PracticeRequest = {
 
 /** Edge: experience = 0 (EWF hard-coded 0) */
 export const EDGE_ZERO_EXPERIENCE: PracticeRequest = {
-  ageGroup: AgeGroup.AGE_12U,
+  ageGroup: AgeGroup.COMPETITIVE,
   experienceLevel: 0,
   intensity: 3,
   numDrills: 3,
@@ -32,7 +32,7 @@ export const EDGE_ZERO_EXPERIENCE: PracticeRequest = {
 
 /** Edge: max experience */
 export const EDGE_MAX_EXPERIENCE: PracticeRequest = {
-  ageGroup: AgeGroup.AGE_12U,
+  ageGroup: AgeGroup.COMPETITIVE,
   experienceLevel: 5,
   intensity: 3,
   numDrills: 3,
@@ -42,7 +42,7 @@ export const EDGE_MAX_EXPERIENCE: PracticeRequest = {
 
 /** Edge: single drill */
 export const EDGE_SINGLE_DRILL: PracticeRequest = {
-  ageGroup: AgeGroup.AGE_10U,
+  ageGroup: AgeGroup.KID_PITCH,
   experienceLevel: 2,
   intensity: 3,
   numDrills: 1,
@@ -52,7 +52,7 @@ export const EDGE_SINGLE_DRILL: PracticeRequest = {
 
 /** Edge: more coaches than drills */
 export const EDGE_EXCESS_COACHES: PracticeRequest = {
-  ageGroup: AgeGroup.AGE_10U,
+  ageGroup: AgeGroup.KID_PITCH,
   experienceLevel: 2,
   intensity: 3,
   numDrills: 2,

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, Component, ErrorInfo } from 'react';
-import { View, Text, ScrollView, FlatList, TouchableOpacity, TextInput, StyleSheet, Keyboard, Alert, Share } from 'react-native';
+import { View, Text, ScrollView, FlatList, TouchableOpacity, TextInput, StyleSheet, Keyboard, Alert, Share, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -334,7 +334,8 @@ export default function StarredScreen() {
   // ── Create form ──────────────────────────────────────────────────────
   if (isCreating) {
     return (
-      <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingBottom: insets.bottom }]}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView style={styles.scroll} contentContainerStyle={[styles.container, { paddingBottom: insets.bottom }]} keyboardShouldPersistTaps="handled">
         <View style={styles.formBar}>
           <TouchableOpacity onPress={cancelCreate} disabled={isSaving}>
             <Text style={[styles.formBarCancel, isSaving && styles.formBarSaveDisabled]}>Cancel</Text>
@@ -393,6 +394,7 @@ export default function StarredScreen() {
           ))}
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -538,7 +540,7 @@ export default function StarredScreen() {
 const styles = StyleSheet.create({
   scroll: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FAFBFC',
   },
   container: {
     flex: 1,
