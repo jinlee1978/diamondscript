@@ -88,7 +88,10 @@ Apple Guideline 3.1.2 requirements (all met in-app):
 App Store Connect metadata checklist (manual):
 - Privacy Policy URL field → `https://jinlee1978.github.io/diamondscript/privacy/`
 - EULA → Apple Standard License Agreement (default)
-- IAP product "DiamondScript Pro" must be attached to each app submission with a review screenshot
+- Terms of Use link added to App Description text
+- IAP product "DiamondScript Pro" must be attached to each app submission
+- IAP promotional image (1024×1024) must NOT contain price references (Apple Guideline 2.3.2)
+- App Store screenshots must match accepted sizes: 1284×2778 or 1242×2688 (portrait)
 
 ---
 
@@ -113,4 +116,29 @@ App Store Connect metadata checklist (manual):
 | `components/UpgradeBanner.tsx` | Inline upgrade nudge — calls `openPaywall()` |
 | `context/PracticeContext.tsx` | App state — includes paywall state + trigger management |
 | `privacy-policy.html` | Privacy policy source (also copied to `privacy/index.html`) |
-| `app.json` | Version: 1.1.0, buildNumber: 6, versionCode: 96 |
+| `app.json` | Version: 1.1.0, buildNumber: 8, versionCode: 98 |
+
+---
+
+## App Store Submission Status
+
+**Current version:** 1.1.0 (buildNumber 8, versionCode 98)
+**Status:** Published. Hotfix for text overflow on small screens (build 8).
+
+### Rejection History
+
+1. **v1.0.7 — Rejected Feb 24, 2026:**
+   - Guideline 2.1: IAP product not attached to submission → Fixed: attached DiamondScript Monthly Pro
+   - Guideline 3.1.2: Missing legal links → Fixed: updated Privacy Policy + Terms URLs in code and App Store Connect metadata
+
+2. **v1.1.0 — Rejected March 10, 2026:**
+   - Guideline 2.3.2: IAP promotional image contained price references → Fixed: replaced with price-free image
+
+### Changes in v1.1.0 (vs rejected v1.0.7)
+- Unified paywall system: all upgrade flows route through PaywallModal via contextual triggers
+- Pro lock indicators on drill picker and Drill Library
+- Prominent upgrade gate in Practice Log (replaces passive banner)
+- Fixed filterCandidates to show Pro drills with lock badges for free users
+- Updated legal URLs (Privacy Policy → GitHub Pages, Terms → Apple Standard EULA)
+- Comprehensive privacy policy update (RevenueCat, Supabase, coach notes, sharing, export)
+- Version bump: 1.0.7 → 1.1.0

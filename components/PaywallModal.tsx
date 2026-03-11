@@ -134,8 +134,8 @@ export default function PaywallModal({
             </View>
 
             {/* Headline */}
-            <Text style={styles.headline}>DiamondScript Pro</Text>
-            <Text style={styles.subheadline}>Your AI Assistant Coach</Text>
+            <Text style={styles.headline} numberOfLines={1} adjustsFontSizeToFit>DiamondScript Pro</Text>
+            <Text style={styles.subheadline} numberOfLines={1} adjustsFontSizeToFit>Your AI Assistant Coach</Text>
 
             {/* Contextual subtitle */}
             <Text style={styles.subtitle}>{getSubtitle()}</Text>

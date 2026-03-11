@@ -232,7 +232,7 @@ export default function HomeScreen() {
                 resizeMode="contain"
               />
               <View style={styles.greetingTextArea}>
-                <Text style={styles.greeting}>DiamondScript</Text>
+                <Text style={styles.greeting} numberOfLines={1} adjustsFontSizeToFit>DiamondScript</Text>
                 <Text style={styles.greetingSub}>
                   {activeTeam ? activeTeam.name : 'Practice generation for every diamond.'}
                 </Text>

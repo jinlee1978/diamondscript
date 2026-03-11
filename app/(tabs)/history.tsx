@@ -455,7 +455,7 @@ export default function HistoryScreen() {
         <View style={styles.cardBody}>
           {/* Top row: age group label + actions (no overlap) */}
           <View style={styles.cardTopRow}>
-            <Text style={styles.cardTitle} numberOfLines={1}>
+            <Text style={styles.cardTitle} numberOfLines={1} ellipsizeMode="tail">
               {formatAgeGroup(session.request.ageGroup)}
             </Text>
             <View style={styles.cardActions}>
@@ -663,7 +663,7 @@ export default function HistoryScreen() {
                 <Text style={styles.shareSummaryLabel}>
                   {formatAgeGroup(shareSession.request.ageGroup)}
                 </Text>
-                <Text style={styles.shareSummaryMeta}>
+                <Text style={styles.shareSummaryMeta} numberOfLines={1} adjustsFontSizeToFit>
                   {shareSession.stationLayout?.totalWallClockMinutes ?? 0} min  {'\u2022'}  {shareSession.selectedDrills?.length ?? 0} drills  {'\u2022'}  {shareSession.coachNames?.length ?? 1} coach{(shareSession.coachNames?.length ?? 1) !== 1 ? 'es' : ''}
                 </Text>
               </View>

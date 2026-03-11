@@ -16,7 +16,7 @@ export default function UpgradeBanner({ feature, trigger = 'feature' }: Props) {
     <TouchableOpacity style={styles.container} onPress={() => openPaywall(trigger)} activeOpacity={0.7}>
       <View style={styles.inner}>
         <Ionicons name="diamond-outline" size={14} color="#D4AF37" />
-        <Text style={styles.text}>
+        <Text style={styles.text} numberOfLines={2} ellipsizeMode="tail">
           <Text style={styles.bold}>Unlock {feature} </Text>
           with Pro
         </Text>

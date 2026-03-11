@@ -156,7 +156,7 @@ const DrillCard = React.memo(function DrillCard({
   const cardContent = (
     <>
       <View style={styles.header}>
-        <Text style={styles.name}>{block.drill.name}</Text>
+        <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{block.drill.name}</Text>
         <View style={styles.headerRight}>
             {/* Reorder arrows - only show in edit mode */}
             {isEditMode && (
@@ -304,7 +304,7 @@ const DrillCard = React.memo(function DrillCard({
                   <TouchableOpacity key={drill.id} style={styles.pickerRow} onPress={() => handleSwap(drill)}>
                     <View style={styles.pickerRowInfo}>
                       <View style={styles.pickerRowTop}>
-                        <Text style={styles.pickerDrillName}>{drill.name}</Text>
+                        <Text style={styles.pickerDrillName} numberOfLines={1} ellipsizeMode="tail">{drill.name}</Text>
                         {isCustom && (
                           <View style={styles.pickerCustomBadge}>
                             <Text style={styles.pickerCustomBadgeText}>Custom</Text>
@@ -360,9 +360,9 @@ const DrillCard = React.memo(function DrillCard({
                         </Text>
                       </View>
                       <View style={styles.coachPickerInfo}>
-                        <Text style={styles.coachPickerName}>{coach.name}</Text>
+                        <Text style={styles.coachPickerName} numberOfLines={1} ellipsizeMode="tail">{coach.name}</Text>
                         {coach.specialties.length > 0 && (
-                          <Text style={styles.coachPickerSpecialties}>
+                          <Text style={styles.coachPickerSpecialties} numberOfLines={1} ellipsizeMode="tail">
                             {coach.specialties.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')}
                           </Text>
                         )}
