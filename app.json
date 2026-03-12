@@ -2,7 +2,7 @@
   "expo": {
     "name": "DiamondScript",
     "slug": "diamondscript",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "scheme": "diamondscript",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -21,7 +21,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "UIDesignRequiresCompatibility": true
       },
-      "buildNumber": "11"
+      "buildNumber": "12"
     },
     "android": {
       "adaptiveIcon": {
@@ -29,7 +29,7 @@
         "backgroundColor": "#1B4332"
       },
       "package": "com.diamondscript.app",
-      "versionCode": 101,
+      "versionCode": 102,
       "permissions": [
         "com.android.vending.BILLING"
       ]
