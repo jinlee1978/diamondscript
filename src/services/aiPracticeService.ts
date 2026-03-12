@@ -260,12 +260,13 @@ export function convertAIPlanToPracticeSession(
   const ageGroup = ageGroupMap[request.ageGroup] ?? AgeGroup.KID_PITCH;
 
   // Infer category from section title or focus area
+  // Order matters: check fielding before pitching so "Throwing Accuracy" maps to fielding
   const inferCategory = (sectionTitle: string, focusArea: string): DrillCategory => {
     const combined = `${sectionTitle} ${focusArea}`.toLowerCase();
-    if (combined.includes('hit') || combined.includes('bat')) return 'hitting';
-    if (combined.includes('field') || combined.includes('catch')) return 'fielding';
-    if (combined.includes('pitch') || combined.includes('throw')) return 'pitching';
-    if (combined.includes('base') || combined.includes('run')) return 'baserunning';
+    if (combined.includes('hit') || combined.includes('bat') || combined.includes('swing') || combined.includes('bunt')) return 'hitting';
+    if (combined.includes('field') || combined.includes('catch') || combined.includes('ground ball') || combined.includes('fly ball') || combined.includes('cut-off') || combined.includes('relay') || combined.includes('throwing accuracy') || combined.includes('defensive')) return 'fielding';
+    if (combined.includes('pitch') || combined.includes('mound')) return 'pitching';
+    if (combined.includes('base') || combined.includes('run') || combined.includes('steal') || combined.includes('lead')) return 'baserunning';
     return 'fielding'; // Default fallback
   };
 

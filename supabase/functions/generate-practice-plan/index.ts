@@ -187,6 +187,12 @@ serve(async (req) => {
       );
     }
 
+    // Sanitize focusArea: cap length and strip non-alphanumeric chars (except commas, spaces, hyphens, ampersands)
+    requestData.focusArea = requestData.focusArea
+      .substring(0, 200)
+      .replace(/[^a-zA-Z0-9,\s\-&()]/g, '')
+      .trim();
+
     // Get Gemini API key from secrets
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     if (!geminiApiKey) {
@@ -364,7 +370,7 @@ function buildPrompt(request: GeneratePlanRequest): string {
 **Team Profile:**
 - Age Group: ${request.ageGroup}
 - Experience Level: ${experienceLabel}
-- Focus Area: ${request.focusArea}
+- Focus Areas: ${request.focusArea}
 - Practice Duration: ${request.duration} minutes
 - Intensity: ${intensityDesc}
 ${request.assistantCoaches ? `- Assistant Coaches: ${request.assistantCoaches}` : '- Coach: Head coach only'}${customInstructions}
@@ -411,7 +417,7 @@ ${ageConstraint}
 - 1-3 drills per section
 - Durations sum to ~${request.duration} minutes
 - Equipment arrays required (use ["none"] if no equipment)
-- Focus on ${request.focusArea}
+- Prioritize drills covering: ${request.focusArea}
 - Age-appropriate for ${request.ageGroup}
 - Respect the age group constraints above (max practice time, allowed activities)
 
