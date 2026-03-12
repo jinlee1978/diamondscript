@@ -248,7 +248,7 @@ export default function GenerateScreen() {
         intensity: intensityType, assistantCoaches: assistants,
       }, tier);
       const practiceSession = { ...baseSession, source: 'ai' as const };
-      router.push('/history');
+      router.navigate('/history');
       importPractice(practiceSession);
       // BUILD 101: Decrement daily AI budget (replaces 60s cooldown)
       const budget = await incrementAIUsage();

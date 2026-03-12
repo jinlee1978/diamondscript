@@ -224,7 +224,7 @@ export default function TeamsScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.staffButton}
-                onPress={() => router.push('/coaching')}
+                onPress={() => router.navigate('/coaching')}
                 activeOpacity={0.8}
               >
                 <Ionicons name="people" size={20} color="#1B4332" />
@@ -241,7 +241,7 @@ export default function TeamsScreen() {
               </Text>
               <TouchableOpacity
                 style={styles.staffButton}
-                onPress={() => router.push('/season')}
+                onPress={() => router.navigate('/season')}
                 activeOpacity={0.8}
               >
                 <Ionicons name="calendar" size={20} color="#1B4332" />

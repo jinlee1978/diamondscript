@@ -567,7 +567,7 @@ export default function PracticeScreen() {
     {showAddPicker && (
       <Modal visible transparent animationType="slide" onRequestClose={() => setShowAddPicker(false)}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setShowAddPicker(false)}>
-          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true}>
+          <View style={styles.pickerSheet} onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => false}>
             <View style={styles.pickerHandle} />
             <View style={styles.pickerHeader}>
               <Text style={styles.pickerTitle}>Add Drill</Text>

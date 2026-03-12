@@ -257,7 +257,7 @@ export default function HistoryScreen() {
         </Text>
         <TouchableOpacity
           style={styles.emptyButton}
-          onPress={() => router.push('/(tabs)/generate')}
+          onPress={() => router.navigate('/generate')}
         >
           <Ionicons name="flash-outline" size={18} color="#FFFFFF" />
           <Text style={styles.emptyButtonText}>Generate a Practice</Text>
@@ -459,22 +459,18 @@ export default function HistoryScreen() {
               {formatAgeGroup(session.request.ageGroup)}
             </Text>
             <View style={styles.cardActions}>
-              <View onStartShouldSetResponder={() => true}>
-                <TouchableOpacity
-                  onPress={() => handleSharePractice(session)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="share-outline" size={17} color="#3B82F6" />
-                </TouchableOpacity>
-              </View>
-              <View onStartShouldSetResponder={() => true}>
-                <TouchableOpacity
-                  onPress={() => handleDelete(savedAt)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="trash-outline" size={17} color="#EF4444" />
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation(); handleSharePractice(session); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="share-outline" size={17} color="#3B82F6" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation(); handleDelete(savedAt); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="trash-outline" size={17} color="#EF4444" />
+              </TouchableOpacity>
             </View>
           </View>
           {/* Source badge on its own row */}
@@ -531,40 +527,38 @@ export default function HistoryScreen() {
           </View>
 
           {/* Coach notes */}
-          <View onStartShouldSetResponder={() => true}>
-            <TouchableOpacity
-              style={styles.noteToggle}
-              onPress={() => { animateFade(); setExpandedNote(isExpanded ? null : savedAt); }}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={hasNote ? 'document-text' : 'document-text-outline'}
-                size={14}
-                color={hasNote ? '#1B4332' : '#9CA3AF'}
-              />
-              <Text style={[styles.noteToggleText, hasNote && styles.noteToggleTextFilled]}>
-                {hasNote ? 'Coach Notes' : 'Add notes'}
-              </Text>
-              <Ionicons
-                name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                size={14}
-                color="#9CA3AF"
-              />
-            </TouchableOpacity>
-            {isExpanded && (
-              <TextInput
-                style={styles.coachNoteInput}
-                placeholder="What went well? What to improve next time?"
-                placeholderTextColor="#9CA3AF"
-                value={editingNotes[savedAt] ?? item.coachNote ?? ''}
-                onChangeText={text => handleNoteChange(savedAt, text)}
-                onBlur={() => handleNoteBlur(savedAt)}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            )}
-          </View>
+          <TouchableOpacity
+            style={styles.noteToggle}
+            onPress={(e) => { e.stopPropagation(); animateFade(); setExpandedNote(isExpanded ? null : savedAt); }}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={hasNote ? 'document-text' : 'document-text-outline'}
+              size={14}
+              color={hasNote ? '#1B4332' : '#9CA3AF'}
+            />
+            <Text style={[styles.noteToggleText, hasNote && styles.noteToggleTextFilled]}>
+              {hasNote ? 'Coach Notes' : 'Add notes'}
+            </Text>
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color="#9CA3AF"
+            />
+          </TouchableOpacity>
+          {isExpanded && (
+            <TextInput
+              style={styles.coachNoteInput}
+              placeholder="What went well? What to improve next time?"
+              placeholderTextColor="#9CA3AF"
+              value={editingNotes[savedAt] ?? item.coachNote ?? ''}
+              onChangeText={text => handleNoteChange(savedAt, text)}
+              onBlur={() => handleNoteBlur(savedAt)}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+          )}
         </View>
 
         {/* Chevron */}

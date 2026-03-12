@@ -144,7 +144,7 @@ export default function AILabScreen() {
       };
 
       // BUILD 60: Navigate first to prevent data orphaning if transition fails
-      router.push('/history');
+      router.navigate('/history');
       importPractice(practiceSession);
       setAiCooldownUntil(Date.now() + 60000); // 60 seconds from now
 
