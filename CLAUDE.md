@@ -116,14 +116,14 @@ App Store Connect metadata checklist (manual):
 | `components/UpgradeBanner.tsx` | Inline upgrade nudge — calls `openPaywall()` |
 | `context/PracticeContext.tsx` | App state — includes paywall state + trigger management |
 | `privacy-policy.html` | Privacy policy source (also copied to `privacy/index.html`) |
-| `app.json` | Version: 1.1.1, buildNumber: 9, versionCode: 99 |
+| `app.json` | Version: 1.1.1, buildNumber: 10, versionCode: 100 |
 
 ---
 
 ## App Store Submission Status
 
-**Current version:** 1.1.1 (buildNumber 9, versionCode 99)
-**Status:** Pending submission. Hotfix for text overflow on small screens.
+**Current version:** 1.1.1 (buildNumber 10, versionCode 100)
+**Status:** Pending submission. Text overflow fix + focus area chip picker.
 
 ### Rejection History
 
