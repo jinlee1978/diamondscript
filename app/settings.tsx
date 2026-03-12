@@ -21,7 +21,6 @@ import {
   estimateBackupSize, formatBytes, BackupData,
 } from '../src/data/storage/backupService';
 import { usePractice } from '../context/PracticeContext';
-import PaywallModal from '../components/PaywallModal';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -292,13 +291,6 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
-      {/* Unified PaywallModal */}
-      <PaywallModal
-        visible={showPaywall}
-        onClose={closePaywall}
-        onSuccess={closePaywall}
-        trigger={paywallTrigger ?? undefined}
-      />
     </>
   );
 }

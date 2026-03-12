@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { usePractice } from '../../context/PracticeContext';
-import PaywallModal from '../../components/PaywallModal';
 import { DrillCategory } from '../../src/data/types';
 import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
 import { getSubscriptionInfo } from '../../src/subscription/service';
@@ -353,13 +352,6 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      {/* Unified PaywallModal */}
-      <PaywallModal
-        visible={showPaywall}
-        onClose={closePaywall}
-        onSuccess={closePaywall}
-        trigger={paywallTrigger ?? undefined}
-      />
     </>
   );
 }

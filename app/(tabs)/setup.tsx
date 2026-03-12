@@ -9,7 +9,6 @@ import { SubscriptionTier, getTierCapabilities } from '../../src/subscription/ti
 import AgeGroupPicker from '../../components/AgeGroupPicker';
 import Stepper from '../../components/Stepper';
 import UpgradeBanner from '../../components/UpgradeBanner';
-import PaywallModal from '../../components/PaywallModal';
 import { filterCandidates } from '../../src/core/engine/drillSelector';
 import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
 // BUILD 68: Use Staff Registry instead of manual coach names
@@ -209,15 +208,6 @@ export default function SetupScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* BUILD 92: PaywallModal moved OUTSIDE ScrollView to prevent ghost modal freeze.
-          iOS pageSheet modals inside ScrollView can lose touch responder chain,
-          creating an invisible overlay that blocks all touches. */}
-      <PaywallModal
-        visible={showPaywall}
-        onClose={closePaywall}
-        onSuccess={closePaywall}
-        trigger={paywallTrigger ?? undefined}
-      />
     </>
   );
 }

@@ -8,7 +8,6 @@ import { usePractice, PaywallTrigger } from '../../context/PracticeContext';
 import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
 import { DrillCategory } from '../../src/data/types';
 import CategoryBadge from '../../components/CategoryBadge';
-import PaywallModal from '../../components/PaywallModal';
 import Toast from '../../components/Toast';
 
 // Local Error Boundary: prevents list rendering errors from crashing the entire app
@@ -540,12 +539,6 @@ export default function StarredScreen() {
         maxToRenderPerBatch={5}
         windowSize={5}
         showsVerticalScrollIndicator={true}
-      />
-      <PaywallModal
-        visible={showPaywall}
-        onClose={closePaywall}
-        onSuccess={closePaywall}
-        trigger={paywallTrigger ?? undefined}
       />
       <Toast
         message={toastMessage}

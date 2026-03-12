@@ -20,7 +20,6 @@ import { animateExpand, animateFade } from '../../src/utils/animations';
 import { usePractice, HistoryEntry } from '../../context/PracticeContext';
 import CategoryBadge from '../../components/CategoryBadge';
 import SourceBadge from '../../components/SourceBadge';
-import PaywallModal from '../../components/PaywallModal';
 import { DrillCategory, PracticeSession, PracticeSource } from '../../src/data/types';
 import { AgeGroup } from '../../src/data/types/ageGroup';
 import { generateShareLink } from '../../src/utils/practiceSerializer';
@@ -631,12 +630,6 @@ export default function HistoryScreen() {
         keyboardShouldPersistTaps="handled"
       />
 
-      <PaywallModal
-        visible={showPaywall}
-        onClose={closePaywall}
-        onSuccess={closePaywall}
-        trigger={paywallTrigger ?? undefined}
-      />
 
       {/* Share Preview Modal */}
       {shareSession && (

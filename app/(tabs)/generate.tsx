@@ -21,7 +21,6 @@ import { SubscriptionTier, getTierCapabilities } from '../../src/subscription/ti
 import AgeGroupPicker from '../../components/AgeGroupPicker';
 import Stepper from '../../components/Stepper';
 import UpgradeBanner from '../../components/UpgradeBanner';
-import PaywallModal from '../../components/PaywallModal';
 import { filterCandidates } from '../../src/core/engine/drillSelector';
 import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
 import { loadCoachingStaff } from '../../src/data/storage/coachingStorage';
@@ -447,12 +446,6 @@ export default function GenerateScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <PaywallModal
-        visible={showPaywall}
-        onClose={closePaywall}
-        onSuccess={closePaywall}
-        trigger={paywallTrigger ?? undefined}
-      />
     </>
   );
 }

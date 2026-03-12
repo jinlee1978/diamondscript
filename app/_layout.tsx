@@ -4,13 +4,20 @@ import { Stack } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DrillsProvider } from '../context/DrillsContext';
 import { PracticeProvider } from '../context/PracticeContext';
+import PaywallModal from '../components/PaywallModal';
 import ErrorBoundary from '../components/ErrorBoundary';
 import DeepLinkHandler from '../components/DeepLinkHandler';
 import { initSentry } from '../src/config/sentry';
 import { initializeAuth } from '../src/config/supabase';
 import { initializeRevenueCat } from '../src/subscription/service';
+import { usePractice } from '../context/PracticeContext';
 
-export default function RootLayout() {
+function RootLayoutContent() {
+  // BUILD 107: Single PaywallModal at root to prevent gesture responder conflicts
+  // Fixes iOS freeze bug where multiple Modal instances on different screens
+  // could leave phantom touch-blocking layers when navigating during animation
+  const { showPaywall, paywallTrigger, closePaywall } = usePractice();
+
   // Double-init guard: prevents SDK re-initialization on React strict mode remounts
   const didInit = useRef(false);
 
@@ -55,30 +62,46 @@ export default function RootLayout() {
   }, []);
 
   return (
+    <>
+      <DeepLinkHandler />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: '#1B3D2F' },
+          headerTintColor: '#FFFFFF',
+          headerTransparent: false, // BUILD 93: Disable iOS 26 Liquid Glass translucency
+          headerShadowVisible: false,
+          headerBackTitle: 'Back',
+          headerTitleStyle: {
+            fontWeight: '600',
+            fontSize: 17,
+            fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
+          },
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="practice" options={{ title: 'Practice' }} />
+        <Stack.Screen name="upgrade" options={{ title: 'Go Pro' }} />
+        {/* BUILD 101: Season Mode */}
+        <Stack.Screen name="season" options={{ title: 'Season' }} />
+      </Stack>
+
+      {/* BUILD 107: Single PaywallModal at root level */}
+      <PaywallModal
+        visible={showPaywall}
+        onClose={closePaywall}
+        onSuccess={closePaywall}
+        trigger={paywallTrigger ?? undefined}
+      />
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
     <ErrorBoundary>
       <DrillsProvider>
         <PracticeProvider>
-          <DeepLinkHandler />
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: '#1B3D2F' },
-              headerTintColor: '#FFFFFF',
-              headerTransparent: false, // BUILD 93: Disable iOS 26 Liquid Glass translucency
-              headerShadowVisible: false,
-              headerBackTitle: 'Back',
-              headerTitleStyle: {
-                fontWeight: '600',
-                fontSize: 17,
-                fontFamily: Platform.select({ ios: 'ui-rounded', default: undefined }),
-              },
-            }}
-          >
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="practice" options={{ title: 'Practice' }} />
-            <Stack.Screen name="upgrade" options={{ title: 'Go Pro' }} />
-            {/* BUILD 101: Season Mode */}
-            <Stack.Screen name="season" options={{ title: 'Season' }} />
-          </Stack>
+          <RootLayoutContent />
         </PracticeProvider>
       </DrillsProvider>
     </ErrorBoundary>

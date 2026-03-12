@@ -22,7 +22,6 @@ import { Drill, PracticeSession, DrillBlock } from '../src/data/types';
 import DrillCard from '../components/DrillCard';
 import CategoryBadge from '../components/CategoryBadge';
 import UpgradeBanner from '../components/UpgradeBanner';
-import PaywallModal from '../components/PaywallModal';
 import Toast from '../components/Toast';
 import { filterCandidates } from '../src/core/engine/drillSelector';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
@@ -678,12 +677,6 @@ export default function PracticeScreen() {
       </Modal>
     )}
 
-    <PaywallModal
-      visible={showPaywall}
-      onClose={closePaywall}
-      onSuccess={closePaywall}
-      trigger={paywallTrigger ?? undefined}
-    />
 
     <Toast
       message={toastMessage}

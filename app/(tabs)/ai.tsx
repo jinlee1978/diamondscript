@@ -8,7 +8,6 @@ import { usePractice } from '../../context/PracticeContext';
 import { AgeGroup } from '../../src/data/types';
 import { SubscriptionTier } from '../../src/subscription/tiers';
 import Stepper from '../../components/Stepper';
-import PaywallModal from '../../components/PaywallModal';
 import { generateAIPracticePlan, convertAIPlanToPracticeSession } from '../../src/services/aiPracticeService';
 // BUILD 100: Auto-fill from active team profile
 import { getActiveTeamProfile } from '../../src/data/storage/teamProfileStorage';
@@ -358,13 +357,6 @@ export default function AILabScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* BUILD 81: PaywallModal for AI Generator Gate */}
-      <PaywallModal
-        visible={showPaywall}
-        onClose={closePaywall}
-        onSuccess={closePaywall}
-        trigger={paywallTrigger ?? undefined}
-      />
     </SafeAreaView>
   );
 }
