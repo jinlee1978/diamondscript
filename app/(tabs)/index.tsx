@@ -171,7 +171,7 @@ export default function HomeScreen() {
                 <Ionicons name="clipboard-outline" size={20} color="#FFFFFF" />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => router.push('/settings')}
+                onPress={() => router.navigate('/settings')}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Ionicons name="settings-outline" size={20} color="#FFFFFF" />
@@ -248,7 +248,7 @@ export default function HomeScreen() {
             {/* Primary CTA */}
             <TouchableOpacity
               style={styles.ctaButton}
-              onPress={() => router.push('/generate')}
+              onPress={() => router.navigate('/generate')}
               activeOpacity={0.85}
             >
               <Ionicons name="baseball-outline" size={20} color="#FFFFFF" />
@@ -257,7 +257,7 @@ export default function HomeScreen() {
 
             {/* Next Practice (from Season) */}
             {nextPractice && activeSeason && (
-              <TouchableOpacity style={styles.nextPracticeCard} onPress={() => router.push('/season')} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.nextPracticeCard} onPress={() => router.navigate('/season')} activeOpacity={0.8}>
                 <View style={styles.nextPracticeIcon}>
                   <Ionicons name="calendar" size={18} color="#1B4332" />
                 </View>
@@ -276,14 +276,14 @@ export default function HomeScreen() {
 
             {/* Quick Actions Row */}
             <View style={styles.quickActions}>
-              <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/teams')} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.quickAction} onPress={() => router.navigate('/teams')} activeOpacity={0.8}>
                 <View style={[styles.quickActionIcon, { backgroundColor: '#ECFDF5' }]}>
                   <Ionicons name="shield-outline" size={20} color="#1B4332" />
                 </View>
                 <Text style={styles.quickActionLabel}>Teams</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/drills')} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.quickAction} onPress={() => router.navigate('/drills')} activeOpacity={0.8}>
                 <View style={[styles.quickActionIcon, { backgroundColor: '#FEF3C7' }]}>
                   <Ionicons name="star-outline" size={20} color="#92400E" />
                 </View>
@@ -295,14 +295,14 @@ export default function HomeScreen() {
                 )}
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/season')} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.quickAction} onPress={() => router.navigate('/season')} activeOpacity={0.8}>
                 <View style={[styles.quickActionIcon, { backgroundColor: '#EFF6FF' }]}>
                   <Ionicons name="calendar-outline" size={20} color="#1D4ED8" />
                 </View>
                 <Text style={styles.quickActionLabel}>Season</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/coaching')} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.quickAction} onPress={() => router.navigate('/coaching')} activeOpacity={0.8}>
                 <View style={[styles.quickActionIcon, { backgroundColor: '#F3E8FF' }]}>
                   <Ionicons name="people-outline" size={20} color="#7C3AED" />
                 </View>
@@ -315,7 +315,7 @@ export default function HomeScreen() {
               <View style={styles.recentSection}>
                 <View style={styles.recentHeader}>
                   <Text style={styles.recentTitle}>Recent Practices</Text>
-                  <TouchableOpacity onPress={() => router.push('/history')}>
+                  <TouchableOpacity onPress={() => router.navigate('/history')}>
                     <Text style={styles.recentSeeAll}>See All</Text>
                   </TouchableOpacity>
                 </View>
@@ -324,7 +324,7 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     key={session.savedAt?.toString() || i}
                     style={styles.recentCard}
-                    onPress={() => router.push('/history')}
+                    onPress={() => router.navigate('/history')}
                     activeOpacity={0.8}
                   >
                     <View style={styles.recentCardLeft}>
