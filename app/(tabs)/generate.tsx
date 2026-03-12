@@ -37,52 +37,26 @@ const EXPERIENCE_LABELS: Record<number, string> = {
   3: 'Intermediate', 4: 'Advanced', 5: 'Veteran',
 };
 
-// ── Focus Area Picker Options ──────────────────────────────────
-// Structured focus areas grouped by drill category.
-// Pitching group is suppressed for Intro, T-Ball, and Coach Pitch.
+// ── Focus Area Options ─────────────────────────────────────────
+// Broad single-select categories. Coaches use Special Instructions for specifics.
+// Pitching is suppressed for Intro, T-Ball, and Coach Pitch.
 interface FocusOption {
   id: string;
   label: string;
-  category: 'hitting' | 'fielding' | 'pitching' | 'baserunning' | 'general';
+  isPitching?: boolean;
 }
 
 const FOCUS_OPTIONS: FocusOption[] = [
-  // Hitting
-  { id: 'swing_mechanics', label: 'Swing Mechanics', category: 'hitting' },
-  { id: 'tee_work', label: 'Tee Work', category: 'hitting' },
-  { id: 'live_at_bats', label: 'Live At-Bats', category: 'hitting' },
-  { id: 'bunting', label: 'Bunting', category: 'hitting' },
-  { id: 'situational_hitting', label: 'Situational Hitting', category: 'hitting' },
-  // Fielding
-  { id: 'ground_balls', label: 'Ground Balls', category: 'fielding' },
-  { id: 'fly_balls', label: 'Fly Balls', category: 'fielding' },
-  { id: 'throwing_accuracy', label: 'Throwing Accuracy', category: 'fielding' },
-  { id: 'defensive_positioning', label: 'Defensive Positioning', category: 'fielding' },
-  { id: 'cutoffs_relays', label: 'Cut-offs & Relays', category: 'fielding' },
-  // Pitching (hidden for young age groups)
-  { id: 'pitch_mechanics', label: 'Pitch Mechanics', category: 'pitching' },
-  { id: 'accuracy_control', label: 'Accuracy & Control', category: 'pitching' },
-  { id: 'pitch_selection', label: 'Pitch Selection', category: 'pitching' },
-  // Baserunning
-  { id: 'base_running_form', label: 'Base Running Form', category: 'baserunning' },
-  { id: 'stealing_leads', label: 'Stealing & Leads', category: 'baserunning' },
-  { id: 'situational_running', label: 'Situational Running', category: 'baserunning' },
-  // General
-  { id: 'full_practice', label: 'Full Practice (Balanced)', category: 'general' },
-  { id: 'game_prep', label: 'Game Prep', category: 'general' },
+  { id: 'balanced', label: 'Balanced' },
+  { id: 'hitting', label: 'Hitting' },
+  { id: 'fielding', label: 'Fielding' },
+  { id: 'pitching', label: 'Pitching', isPitching: true },
+  { id: 'base_running', label: 'Base Running' },
 ];
 
 // Age groups that suppress pitching focus options
 const PITCHING_SUPPRESSED = new Set([AgeGroup.INTRO, AgeGroup.T_BALL, AgeGroup.COACH_PITCH]);
 
-// Category display labels and ordering
-const CATEGORY_ORDER: { key: string; label: string }[] = [
-  { key: 'general', label: 'General' },
-  { key: 'hitting', label: 'Hitting' },
-  { key: 'fielding', label: 'Fielding' },
-  { key: 'pitching', label: 'Pitching' },
-  { key: 'baserunning', label: 'Baserunning' },
-];
 
 export default function GenerateScreen() {
   const router = useRouter();
@@ -103,51 +77,23 @@ export default function GenerateScreen() {
   const [assistants, setAssistants] = useState(lastRequest?.assistantCoaches ?? 0);
   const [activeTeamName, setActiveTeamName] = useState<string | null>(null);
 
-  // AI-only state
-  const [selectedFocuses, setSelectedFocuses] = useState<Set<string>>(new Set(['full_practice']));
-
-  // Toggle a focus chip on/off (prevent deselecting last chip)
-  const toggleFocus = (id: string) => {
-    setSelectedFocuses(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        if (next.size <= 1) return prev; // Keep at least one selected
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
+  // AI-only state — single-select focus area
+  const [selectedFocus, setSelectedFocus] = useState<string>('balanced');
 
   // Filter focus options based on age group (suppress pitching for young groups)
   const visibleFocusOptions = FOCUS_OPTIONS.filter(
-    o => o.category !== 'pitching' || !PITCHING_SUPPRESSED.has(ageGroup)
-  );
-  const visibleCategories = CATEGORY_ORDER.filter(
-    c => c.key !== 'pitching' || !PITCHING_SUPPRESSED.has(ageGroup)
+    o => !o.isPitching || !PITCHING_SUPPRESSED.has(ageGroup)
   );
 
-  // Clear pitching selections when switching to a young age group
+  // Reset to Balanced if pitching was selected and age group changed to young
   useEffect(() => {
-    if (PITCHING_SUPPRESSED.has(ageGroup)) {
-      setSelectedFocuses(prev => {
-        const next = new Set<string>();
-        prev.forEach(id => {
-          const opt = FOCUS_OPTIONS.find(o => o.id === id);
-          if (opt && opt.category !== 'pitching') next.add(id);
-        });
-        // If everything was pitching, fall back to full_practice
-        return next.size > 0 ? next : new Set(['full_practice']);
-      });
+    if (PITCHING_SUPPRESSED.has(ageGroup) && selectedFocus === 'pitching') {
+      setSelectedFocus('balanced');
     }
   }, [ageGroup]);
 
-  // Build the focusArea string from selected chips for the AI prompt
-  const focusArea = FOCUS_OPTIONS
-    .filter(o => selectedFocuses.has(o.id))
-    .map(o => o.label)
-    .join(', ') || 'Full Practice';
+  // Build the focusArea string for the AI prompt
+  const focusArea = FOCUS_OPTIONS.find(o => o.id === selectedFocus)?.label || 'Balanced';
   const [durationText, setDurationText] = useState('60');
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -366,33 +312,30 @@ export default function GenerateScreen() {
             <>
               <View style={styles.section}>
                 <Text style={styles.label}>Focus Area</Text>
-                <Text style={styles.hint}>Select one or more areas to focus on</Text>
-                {visibleCategories.map(cat => {
-                  const options = visibleFocusOptions.filter(o => o.category === cat.key);
-                  if (options.length === 0) return null;
-                  return (
-                    <View key={cat.key} style={styles.focusCategoryGroup}>
-                      <Text style={styles.focusCategoryLabel}>{cat.label}</Text>
-                      <View style={styles.chipRow}>
-                        {options.map(opt => {
-                          const isSelected = selectedFocuses.has(opt.id);
-                          return (
-                            <TouchableOpacity
-                              key={opt.id}
-                              style={[styles.chip, isSelected && styles.chipSelected]}
-                              onPress={() => toggleFocus(opt.id)}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
-                                {opt.label}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  );
-                })}
+                <Text style={styles.hint}>Choose your practice focus</Text>
+                <View style={styles.chipRow}>
+                  {visibleFocusOptions.map(opt => {
+                    const isSelected = selectedFocus === opt.id;
+                    return (
+                      <TouchableOpacity
+                        key={opt.id}
+                        style={[
+                          styles.chip,
+                          isSelected && styles.chipSelected,
+                        ]}
+                        onPress={() => setSelectedFocus(opt.id)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          styles.chipText,
+                          isSelected && styles.chipTextSelected,
+                        ]}>
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
 
               <View style={styles.section}>
@@ -418,11 +361,12 @@ export default function GenerateScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
+                <Text style={styles.hint}>Optional — add detail to fine-tune your plan</Text>
                 <TextInput
                   style={styles.multilineInput}
                   value={specialInstructions}
                   onChangeText={setSpecialInstructions}
-                  placeholder="e.g., Focus on bunting, avoid long sprints..."
+                  placeholder="e.g., Extra bunting reps, no long sprints, keep drills under 10 min..."
                   placeholderTextColor="#9CA3AF"
                   multiline
                   numberOfLines={3}
@@ -555,21 +499,11 @@ const styles = StyleSheet.create({
   },
   aiButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', letterSpacing: 0.5 },
   // Focus area chip picker
-  focusCategoryGroup: {
-    marginTop: 10,
-  },
-  focusCategoryLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B7280',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
+    marginTop: 4,
   },
   chip: {
     backgroundColor: '#F3F4F6',

@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { usePractice } from '../../context/PracticeContext';
+import PaywallModal from '../../components/PaywallModal';
 import { DrillCategory } from '../../src/data/types';
 import { SEED_DRILL_CATALOG } from '../../src/data/seedDrills';
 import { getSubscriptionInfo } from '../../src/subscription/service';
@@ -41,7 +42,7 @@ interface PendingImport {
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { tier, currentSession, isLoading, starredDrills, customDrills, history, importDrill, importPractice } = usePractice();
+  const { tier, currentSession, isLoading, starredDrills, customDrills, history, importDrill, importPractice, openPaywall, showPaywall, paywallTrigger, closePaywall } = usePractice();
 
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [promptedDrills, setPromptedDrills] = useState<Set<string>>(new Set());
@@ -341,7 +342,7 @@ export default function HomeScreen() {
 
             {/* Upgrade nudge */}
             {tier === 'free' && (
-              <TouchableOpacity style={styles.upgradeNudge} onPress={() => router.push('/upgrade')} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.upgradeNudge} onPress={() => openPaywall('feature')} activeOpacity={0.7}>
                 <Ionicons name="diamond-outline" size={16} color="#92400E" />
                 <Text style={styles.upgradeNudgeText}>
                   Unlock full power with <Text style={styles.upgradeNudgeBold}>Pro — $9.99/mo</Text>
@@ -351,6 +352,14 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Unified PaywallModal */}
+      <PaywallModal
+        visible={showPaywall}
+        onClose={closePaywall}
+        onSuccess={closePaywall}
+        trigger={paywallTrigger ?? undefined}
+      />
     </>
   );
 }

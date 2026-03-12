@@ -21,11 +21,12 @@ import {
   estimateBackupSize, formatBytes, BackupData,
 } from '../src/data/storage/backupService';
 import { usePractice } from '../context/PracticeContext';
+import PaywallModal from '../components/PaywallModal';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { tier } = usePractice();
+  const { tier, openPaywall, showPaywall, paywallTrigger, closePaywall } = usePractice();
 
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -245,7 +246,7 @@ export default function SettingsScreen() {
           <Text style={styles.sectionTitle}>Subscription</Text>
           <TouchableOpacity
             style={styles.actionCard}
-            onPress={() => router.push('/upgrade')}
+            onPress={() => openPaywall('feature')}
             activeOpacity={0.7}
           >
             <View style={[styles.actionIconCircle, {
@@ -290,6 +291,14 @@ export default function SettingsScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Unified PaywallModal */}
+      <PaywallModal
+        visible={showPaywall}
+        onClose={closePaywall}
+        onSuccess={closePaywall}
+        trigger={paywallTrigger ?? undefined}
+      />
     </>
   );
 }

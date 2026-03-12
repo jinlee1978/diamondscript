@@ -60,7 +60,22 @@ export async function generateAIPracticePlan(
     }
 
     // STEP 1: FRESHNESS CHECK - Get current session
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
+
+    // If session exists but token is expired or expiring within 60s, refresh proactively
+    if (session?.expires_at) {
+      const expiresAt = session.expires_at * 1000; // Convert to ms
+      const now = Date.now();
+      if (expiresAt - now < 60_000) {
+        if (__DEV__) {
+          console.log('   ⏰ Token expiring soon, refreshing proactively...');
+        }
+        const { data: refreshData } = await supabase.auth.refreshSession();
+        if (refreshData?.session) {
+          session = refreshData.session;
+        }
+      }
+    }
 
     // Check if session exists
     if (!session?.access_token) {
@@ -76,6 +91,7 @@ export async function generateAIPracticePlan(
       console.log('   ✅ Session found');
       console.log('   User ID:', session.user.id);
       console.log('   Token length:', session.access_token.length);
+      console.log('   Expires at:', new Date(session.expires_at! * 1000).toISOString());
       console.log('   📤 Attempting Edge Function call...');
     }
 
@@ -84,8 +100,11 @@ export async function generateAIPracticePlan(
       const result = await invokeEdgeFunction(request, session.access_token);
       return result;
     } catch (error: any) {
-      // Check if it's a 401 error
-      const statusCode = error?.context?.status || (error.message?.includes('401') ? 401 : null);
+      // Check if it's a 401 error (multiple detection strategies)
+      const statusCode = error?.context?.status
+        || error?.status
+        || (error.message?.includes('401') ? 401 : null)
+        || (error.message?.includes('Authentication failed') ? 401 : null);
 
       if (statusCode === 401) {
         if (__DEV__) {
@@ -109,15 +128,44 @@ export async function generateAIPracticePlan(
 }
 
 /**
- * Re-authenticate and retry the request once
+ * Re-authenticate and retry the request once.
+ * First tries refreshing the existing session. Falls back to fresh anonymous sign-in.
  */
 async function reAuthAndRetry(
   request: AIPracticeRequest,
   userIdKey: string
 ): Promise<AIPracticePlan> {
+  // STEP A: Try refreshing the existing session first
+  if (__DEV__) {
+    console.log('   🔄 Re-Auth: Attempting session refresh...');
+  }
+
+  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+
+  if (!refreshError && refreshData?.session?.access_token) {
+    if (__DEV__) {
+      console.log('   ✅ Session refreshed successfully');
+      console.log('   User ID:', refreshData.session.user.id);
+    }
+    try {
+      return await invokeEdgeFunction(request, refreshData.session.access_token);
+    } catch (retryError: any) {
+      if (__DEV__) {
+        console.warn('   ⚠️ Refreshed token still failed, falling back to anonymous sign-in...');
+      }
+      // Fall through to anonymous sign-in below
+    }
+  } else if (__DEV__) {
+    console.warn('   ⚠️ Session refresh failed:', refreshError?.message || 'No session');
+  }
+
+  // STEP B: Fresh anonymous sign-in
   if (__DEV__) {
     console.log('   🔄 Re-Auth: Signing in anonymously...');
   }
+
+  // Sign out first to clear any stale session state
+  await supabase.auth.signOut().catch(() => {});
 
   // Sign in anonymously
   const { data: signInData, error: signInError } = await supabase.auth.signInAnonymously();
@@ -198,7 +246,9 @@ async function invokeEdgeFunction(
 
       // BUILD 67: Specific error messages for debugging
       if (statusCode === 401) {
-        throw new Error('Authentication failed. The session token was rejected by the server. Please contact support.');
+        const err = new Error('Authentication failed. Please try again.');
+        (err as any).status = 401;
+        throw err;
       } else if (statusCode === 403) {
         throw new Error('Access denied. Your account may not have permission to use AI features.');
       } else if (statusCode === 429) {
@@ -260,11 +310,11 @@ export function convertAIPlanToPracticeSession(
   const ageGroup = ageGroupMap[request.ageGroup] ?? AgeGroup.KID_PITCH;
 
   // Infer category from section title or focus area
-  // Order matters: check fielding before pitching so "Throwing Accuracy" maps to fielding
+  // Order matters: check fielding before pitching so "Throwing" maps to fielding not pitching
   const inferCategory = (sectionTitle: string, focusArea: string): DrillCategory => {
     const combined = `${sectionTitle} ${focusArea}`.toLowerCase();
     if (combined.includes('hit') || combined.includes('bat') || combined.includes('swing') || combined.includes('bunt')) return 'hitting';
-    if (combined.includes('field') || combined.includes('catch') || combined.includes('ground ball') || combined.includes('fly ball') || combined.includes('cut-off') || combined.includes('relay') || combined.includes('throwing accuracy') || combined.includes('defensive')) return 'fielding';
+    if (combined.includes('field') || combined.includes('catch') || combined.includes('ground ball') || combined.includes('fly ball') || combined.includes('throw') || combined.includes('cut-off') || combined.includes('relay') || combined.includes('defensive')) return 'fielding';
     if (combined.includes('pitch') || combined.includes('mound')) return 'pitching';
     if (combined.includes('base') || combined.includes('run') || combined.includes('steal') || combined.includes('lead')) return 'baserunning';
     return 'fielding'; // Default fallback
