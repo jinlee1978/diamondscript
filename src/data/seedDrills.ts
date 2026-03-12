@@ -12,7 +12,8 @@ import { Drill, AgeGroup } from './types';
  *   - Pitching drills exclude Intro, T-Ball, and Coach Pitch.
  *   - Machine Pitch introduces swing-timing drills.
  *
- * Top 30 drills are marked subscriptionTier: 'free'. The rest are 'pro'.
+ * 34 drills are marked subscriptionTier: 'free'. The rest are 'pro'.
+ * Every age group has at least 5 free drills to support the free-tier stepper (max 4).
  *
  * DESCRIPTION FORMAT (matches Gemini AI prompt):
  * SETUP: [1-2 sentences on positioning, spacing, equipment]
@@ -471,7 +472,7 @@ export const SEED_DRILL_CATALOG: Drill[] = [
     category: 'pitching',
     ageGroupCompatibility: [AgeGroup.COMPETITIVE, AgeGroup.ADVANCED],
     minPlayers: 1,
-    subscriptionTier: 'pro',
+    subscriptionTier: 'free',
     equipment: ['Balls', 'Pitching mound'],
   },
   {
@@ -483,7 +484,7 @@ export const SEED_DRILL_CATALOG: Drill[] = [
     category: 'fielding',
     ageGroupCompatibility: [AgeGroup.COMPETITIVE, AgeGroup.ADVANCED],
     minPlayers: 4,
-    subscriptionTier: 'pro',
+    subscriptionTier: 'free',
     equipment: ['Balls', 'Bat', 'Bases'],
   },
   {
@@ -495,7 +496,7 @@ export const SEED_DRILL_CATALOG: Drill[] = [
     category: 'hitting',
     ageGroupCompatibility: [AgeGroup.COMPETITIVE, AgeGroup.ADVANCED],
     minPlayers: 1,
-    subscriptionTier: 'pro',
+    subscriptionTier: 'free',
     equipment: ['Resistance bands', 'Batting tees', 'Balls', 'Bats', 'Helmets'],
   },
   {
@@ -581,7 +582,7 @@ export const SEED_DRILL_CATALOG: Drill[] = [
     category: 'baserunning',
     ageGroupCompatibility: [AgeGroup.ADVANCED],
     minPlayers: 3,
-    subscriptionTier: 'pro',
+    subscriptionTier: 'free',
     equipment: ['Balls', 'Bases'],
   },
   {

@@ -7,10 +7,16 @@ Code that touches these domains references these definitions — never hardcodes
 
 ## Subscription Tiers
 
-| Tier | Price    | Drill Catalog   | Custom Intensity | Station Splitting | Practice Log |
-|------|----------|-----------------|------------------|-------------------|--------------|
-| Free | $0       | Top 30 only     | Locked at 3      | No (sequential)   | Last 5       |
-| Pro  | $9.99/mo | Full catalog    | Yes (1–5)        | Yes               | Unlimited    |
+| Tier | Price    | Drill Catalog | Intensity | Assistants | Max Drills | Practice Log | Starred Drills | AI Generation |
+|------|----------|---------------|-----------|------------|------------|--------------|----------------|---------------|
+| Free | $0       | 34 free drills | 1–4      | 0–1 (0–2 for Intro/T-Ball/Coach Pitch) | 4 | Last 3 | 5 | No |
+| Pro  | $9.99/mo | Full catalog  | 1–5       | 0–3        | 6          | Unlimited    | Unlimited      | Yes           |
+
+**Age-specific overrides (all tiers):** Intro/T-Ball cap experience at 1, intensity at 3. Coach Pitch caps experience at 2, intensity at 3.
+These overrides are in `YOUNG_GROUP_OVERRIDES` inside `src/subscription/tiers.ts`.
+
+**Free generation limits:** Intro, T-Ball, and Coach Pitch get **unlimited** free engine generations. All other age groups get **5 free generations**, then paywall. AI generation always requires Pro.
+Generation tracking is in `src/data/storage/generationTracker.ts`. The `UNLIMITED_AGE_GROUPS` set and `FREE_GENERATION_LIMIT = 5` are the source of truth.
 
 Feature gating is in `src/subscription/featureGate.ts`.
 The engine itself is tier-unaware. Tier constraints are applied at the request boundary BEFORE the engine is invoked.

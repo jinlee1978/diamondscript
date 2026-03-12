@@ -39,19 +39,19 @@ import { AgeGroup, PracticeRequest, PracticeSession, DrillCategory, Drill, Drill
 import { generatePracticeSession } from '../src/core/engine/index';
 import { applyTierConstraints } from '../src/subscription/featureGate';
 import { SEED_DRILL_CATALOG } from '../src/data/seedDrills';
-import { SubscriptionTier } from '../src/subscription/tiers';
+import { SubscriptionTier, getTierCapabilities } from '../src/subscription/tiers';
 import { getSubscriptionInfo, initiateUpgrade, restorePurchases, addCustomerInfoListener, invalidateCustomerInfoCache, initializeRevenueCat, UpgradeResult, RestoreResult } from '../src/subscription/service';
 import { useDrills, CustomDrill } from './DrillsContext';
 import { captureException } from '../src/config/sentry';
 import { flattenStationsToTimeline, manuallyAssignDrill as manuallyAssignDrillUtil } from '../src/logic/coachMatcher';
 // BUILD 101: Generation tracking for monetization
-import { incrementGenerationCount, canFreeUserGenerate, FREE_GENERATION_LIMIT } from '../src/data/storage/generationTracker';
+import { incrementGenerationCount, canFreeUserGenerate, FREE_GENERATION_LIMIT, getRemainingFreeGenerations, isUnlimitedAgeGroup } from '../src/data/storage/generationTracker';
 
 const STORAGE_KEY = '@diamondscript/lastRequest';
 const HISTORY_KEY = '@diamondscript/history';
 
 // BUILD 101: Free tier history limit raised (was 2, now 5 to match UI display)
-const FREE_HISTORY_LIMIT = 5;
+const FREE_HISTORY_LIMIT = 3;
 
 export interface HistoryEntry {
   session: PracticeSession;
@@ -120,6 +120,9 @@ interface PracticeContextValue {
   updateCurrentSession: (session: PracticeSession) => void; // BUILD 68: Updates session and persists to history
   deletePracticeHistory: (savedAt: number) => void;
   importPractice: (session: PracticeSession) => boolean;
+  // BUILD 101: Free generation tracking
+  freeGenerationsLeft: number;
+  refreshGenerationsLeft: (ageGroup?: string) => void;
   // BUILD 60: AI Cooldown (global state persists across tab navigation)
   aiCooldownUntil: number;
   setAiCooldownUntil: (timestamp: number) => void;
@@ -731,20 +734,19 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
   // BUILD 101: Track remaining free generations for UI display
   const [freeGenerationsLeft, setFreeGenerationsLeft] = useState(FREE_GENERATION_LIMIT);
 
+  const refreshGenerationsLeft = useCallback((ageGroup?: string) => {
+    getRemainingFreeGenerations(ageGroup).then(setFreeGenerationsLeft);
+  }, []);
+
   // Load generation count on mount
   useEffect(() => {
-    canFreeUserGenerate().then((canGenerate) => {
-      // Refresh remaining count
-      import('../src/data/storage/generationTracker').then(({ getRemainingFreeGenerations }) => {
-        getRemainingFreeGenerations().then(setFreeGenerationsLeft);
-      });
-    });
+    refreshGenerationsLeft();
   }, []);
 
   const generateSession = useCallback((request: PracticeRequest, coachNames?: string[]): PracticeSession | null => {
-    // BUILD 101: Generation gate - free users get 3 plans, then paywall
-    // (async check is non-blocking; we use cached freeGenerationsLeft for instant gating)
-    if (tier === SubscriptionTier.FREE && freeGenerationsLeft <= 0) {
+    // BUILD 101: Generation gate - young groups (Intro, T-Ball, Coach Pitch) are unlimited.
+    // Other age groups get 5 free plans, then paywall.
+    if (tier === SubscriptionTier.FREE && !isUnlimitedAgeGroup(request.ageGroup) && freeGenerationsLeft <= 0) {
       openPaywall('generation_limit');
       return null;
     }
@@ -770,12 +772,10 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
     setLastRequest(sanitized);
     setCurrentSession(session);
 
-    // BUILD 101: Increment generation counter for free users
-    if (tier === SubscriptionTier.FREE) {
+    // BUILD 101: Increment generation counter for free users (skip for unlimited young groups)
+    if (tier === SubscriptionTier.FREE && !isUnlimitedAgeGroup(request.ageGroup)) {
       incrementGenerationCount().then(() => {
-        import('../src/data/storage/generationTracker').then(({ getRemainingFreeGenerations }) => {
-          getRemainingFreeGenerations().then(setFreeGenerationsLeft);
-        });
+        getRemainingFreeGenerations(request.ageGroup).then(setFreeGenerationsLeft);
       });
     }
 
@@ -822,8 +822,23 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
         canSaveMorePractices,
         // Drills
         starredDrills: drills.starredDrills,
-        toggleStar: drills.toggleStar,
-        toggleStarWithDrill: drills.toggleStarWithDrill,
+        toggleStar: (drillId: string) => {
+          const caps = getTierCapabilities(tier);
+          // Allow unstarring, but check cap when starring
+          if (!drills.starredDrills.has(drillId) && drills.starredDrills.size >= caps.starredDrillsLimit) {
+            openPaywall('drill_catalog');
+            return;
+          }
+          drills.toggleStar(drillId);
+        },
+        toggleStarWithDrill: (drill: any) => {
+          const caps = getTierCapabilities(tier);
+          if (!drills.starredDrills.has(drill.id) && drills.starredDrills.size >= caps.starredDrillsLimit) {
+            openPaywall('drill_catalog');
+            return;
+          }
+          drills.toggleStarWithDrill(drill);
+        },
         customDrills: drills.customDrills,
         addCustomDrill: drills.addCustomDrill,
         deleteCustomDrill: drills.deleteCustomDrill,
@@ -845,6 +860,9 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
         updateCurrentSession,
         deletePracticeHistory,
         importPractice,
+        // BUILD 101: Free generation tracking
+        freeGenerationsLeft,
+        refreshGenerationsLeft,
         // BUILD 60: AI Cooldown
         aiCooldownUntil,
         setAiCooldownUntil,

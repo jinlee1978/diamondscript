@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import { usePractice } from '../../context/PracticeContext';
 import { AgeGroup } from '../../src/data/types';
-import { SubscriptionTier } from '../../src/subscription/tiers';
+import { SubscriptionTier, getTierCapabilities } from '../../src/subscription/tiers';
 import AgeGroupPicker from '../../components/AgeGroupPicker';
 import Stepper from '../../components/Stepper';
 import UpgradeBanner from '../../components/UpgradeBanner';
@@ -29,6 +29,7 @@ import { getActiveTeamProfile } from '../../src/data/storage/teamProfileStorage'
 import { generateAIPracticePlan, convertAIPlanToPracticeSession } from '../../src/services/aiPracticeService';
 // BUILD 101: AI Daily Budget
 import { getRemainingAIGenerations, incrementAIUsage, PRO_DAILY_AI_LIMIT } from '../../src/data/storage/aiBudget';
+import { isUnlimitedAgeGroup, FREE_GENERATION_LIMIT } from '../../src/data/storage/generationTracker';
 
 type GenerateMode = 'engine' | 'ai';
 
@@ -64,6 +65,7 @@ export default function GenerateScreen() {
   const {
     tier, lastRequest, generateSession, importPractice,
     showPaywall, paywallTrigger, closePaywall, openPaywall,
+    freeGenerationsLeft, refreshGenerationsLeft,
   } = usePractice();
 
   // Mode toggle
@@ -77,23 +79,48 @@ export default function GenerateScreen() {
   const [assistants, setAssistants] = useState(lastRequest?.assistantCoaches ?? 0);
   const [activeTeamName, setActiveTeamName] = useState<string | null>(null);
 
-  // AI-only state — single-select focus area
-  const [selectedFocus, setSelectedFocus] = useState<string>('balanced');
+  // AI-only state — multi-select focus area (max 3)
+  const [selectedFocuses, setSelectedFocuses] = useState<Set<string>>(new Set(['balanced']));
+  const MAX_FOCUSES = 3;
+
+  const toggleFocus = (id: string) => {
+    setSelectedFocuses(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        if (next.size <= 1) return prev; // Keep at least one
+        next.delete(id);
+      } else {
+        if (next.size >= MAX_FOCUSES) return prev; // Cap at 3
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const atMaxFocuses = selectedFocuses.size >= MAX_FOCUSES;
 
   // Filter focus options based on age group (suppress pitching for young groups)
   const visibleFocusOptions = FOCUS_OPTIONS.filter(
     o => !o.isPitching || !PITCHING_SUPPRESSED.has(ageGroup)
   );
 
-  // Reset to Balanced if pitching was selected and age group changed to young
+  // Clear pitching if age group changed to young
   useEffect(() => {
-    if (PITCHING_SUPPRESSED.has(ageGroup) && selectedFocus === 'pitching') {
-      setSelectedFocus('balanced');
+    if (PITCHING_SUPPRESSED.has(ageGroup)) {
+      setSelectedFocuses(prev => {
+        if (!prev.has('pitching')) return prev;
+        const next = new Set(prev);
+        next.delete('pitching');
+        return next.size > 0 ? next : new Set(['balanced']);
+      });
     }
   }, [ageGroup]);
 
   // Build the focusArea string for the AI prompt
-  const focusArea = FOCUS_OPTIONS.find(o => o.id === selectedFocus)?.label || 'Balanced';
+  const focusArea = FOCUS_OPTIONS
+    .filter(o => selectedFocuses.has(o.id))
+    .map(o => o.label)
+    .join(', ') || 'Balanced';
   const [durationText, setDurationText] = useState('60');
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -101,14 +128,15 @@ export default function GenerateScreen() {
   // BUILD 101: Daily AI budget (replaces 60s cooldown)
   const [aiRemaining, setAiRemaining] = useState(PRO_DAILY_AI_LIMIT);
 
-  // Sync from lastRequest
+  // Sync from lastRequest (clamp to tier caps, age-aware)
   useEffect(() => {
     if (lastRequest) {
+      const tierCaps = getTierCapabilities(tier as SubscriptionTier, lastRequest.ageGroup);
       setAgeGroup(lastRequest.ageGroup);
-      setExperience(lastRequest.experienceLevel);
-      setIntensity(lastRequest.intensity);
-      setNumDrills(lastRequest.numDrills);
-      setAssistants(lastRequest.assistantCoaches);
+      setExperience(Math.min(lastRequest.experienceLevel, tierCaps.maxExperience));
+      setIntensity(Math.min(lastRequest.intensity, tierCaps.maxIntensity));
+      setNumDrills(Math.min(lastRequest.numDrills, tierCaps.maxDrills));
+      setAssistants(Math.min(lastRequest.assistantCoaches, tierCaps.maxAssistants));
     }
   }, [lastRequest]);
 
@@ -117,10 +145,12 @@ export default function GenerateScreen() {
     useCallback(() => {
       getActiveTeamProfile().then(team => {
         if (team) {
+          const tierCaps = getTierCapabilities(tier as SubscriptionTier, team.ageGroup);
           setAgeGroup(team.ageGroup);
-          setExperience(team.experienceLevel);
-          setIntensity(team.intensity);
-          setAssistants(team.assistantCoaches);
+          setExperience(Math.min(team.experienceLevel, tierCaps.maxExperience));
+          // Clamp to tier limits so saved team values don't exceed caps
+          setIntensity(Math.min(team.intensity, tierCaps.maxIntensity));
+          setAssistants(Math.min(team.assistantCoaches, tierCaps.maxAssistants));
           setActiveTeamName(team.name);
         } else {
           setActiveTeamName(null);
@@ -129,6 +159,10 @@ export default function GenerateScreen() {
       // BUILD 101: Refresh AI daily budget on each visit
       if (tier === SubscriptionTier.PRO) {
         getRemainingAIGenerations().then(setAiRemaining);
+      }
+      // Refresh free generation counter on tab focus
+      if (tier === SubscriptionTier.FREE) {
+        refreshGenerationsLeft(ageGroup);
       }
     }, [tier])
   );
@@ -139,24 +173,28 @@ export default function GenerateScreen() {
     return () => unsub();
   }, []);
 
-  // Engine drill constraints
-  const isTBall = ageGroup === AgeGroup.T_BALL || ageGroup === AgeGroup.INTRO;
+  // Engine drill constraints — driven by tier capabilities (age-aware for assistant caps)
+  const caps = getTierCapabilities(tier as SubscriptionTier, ageGroup);
+  const proCaps = getTierCapabilities(SubscriptionTier.PRO, ageGroup);
   const availableDrills = filterCandidates(SEED_DRILL_CATALOG, ageGroup, tier).length;
   const proAvailable = filterCandidates(SEED_DRILL_CATALOG, ageGroup, 'pro').length;
-  const effectiveMax = tier === 'free' && !isTBall ? Math.min(2, availableDrills) : availableDrills;
-  const drillsMax = Math.min(6, effectiveMax);
+  const drillsMax = Math.min(caps.maxDrills, availableDrills);
   const drillsMin = Math.min(3, drillsMax);
-  const drillsUpgradeHelps = tier === 'free' && drillsMax < 6 && Math.min(6, proAvailable) > drillsMax;
-  const drillsCappedNoUpgrade = drillsMax < 6 && !drillsUpgradeHelps;
-  const intensityLocked = tier === 'free';
-  const assistantsLocked = tier === 'free';
+  const drillsUpgradeHelps = tier === 'free' && drillsMax < proCaps.maxDrills && Math.min(proCaps.maxDrills, proAvailable) > drillsMax;
+  const drillsCappedNoUpgrade = drillsMax < caps.maxDrills && !drillsUpgradeHelps;
+  const intensityUpgradeHelps = proCaps.maxIntensity > caps.maxIntensity;
+  const assistantsUpgradeHelps = proCaps.maxAssistants > caps.maxAssistants;
 
-  // Clamp drills
+  // Clamp all values when age group or tier changes + refresh generation counter
   useEffect(() => {
     const avail = filterCandidates(SEED_DRILL_CATALOG, ageGroup, tier).length;
-    const isTB = ageGroup === AgeGroup.T_BALL || ageGroup === AgeGroup.INTRO;
-    const max = Math.min(6, tier === 'free' && !isTB ? Math.min(2, avail) : avail);
+    const max = Math.min(caps.maxDrills, avail);
     if (numDrills > max) setNumDrills(max);
+    if (assistants > caps.maxAssistants) setAssistants(caps.maxAssistants);
+    if (intensity > caps.maxIntensity) setIntensity(caps.maxIntensity);
+    if (experience > caps.maxExperience) setExperience(caps.maxExperience);
+    // Refresh generation counter (unlimited groups show differently)
+    if (tier === SubscriptionTier.FREE) refreshGenerationsLeft(ageGroup);
   }, [ageGroup, tier]);
 
   // Engine generation
@@ -268,20 +306,20 @@ export default function GenerateScreen() {
 
           {/* SHARED: Experience */}
           <View style={styles.section}>
-            <Stepper label="Experience" value={experience} min={0} max={5} onChange={setExperience} />
+            <Stepper label="Experience" value={experience} min={0} max={caps.maxExperience} onChange={setExperience} />
             <Text style={styles.expLabel}>{EXPERIENCE_LABELS[experience]}</Text>
           </View>
 
           {/* SHARED: Intensity */}
           <View style={styles.section}>
-            <Stepper label="Intensity" value={intensity} min={1} max={5} onChange={setIntensity} locked={intensityLocked} />
-            {intensityLocked && <UpgradeBanner feature="custom intensity" />}
+            <Stepper label="Intensity" value={intensity} min={1} max={caps.maxIntensity} onChange={setIntensity} />
+            {intensityUpgradeHelps && <UpgradeBanner feature={`intensity up to ${proCaps.maxIntensity}`} />}
           </View>
 
           {/* SHARED: Assistants */}
           <View style={styles.section}>
-            <Stepper label="Assistants" value={assistants} min={0} max={3} onChange={setAssistants} locked={assistantsLocked} />
-            {assistantsLocked && <UpgradeBanner feature="station splitting" />}
+            <Stepper label="Assistants" value={assistants} min={0} max={caps.maxAssistants} onChange={setAssistants} />
+            {assistantsUpgradeHelps && <UpgradeBanner feature={`up to ${proCaps.maxAssistants} assistants`} />}
           </View>
 
           {/* ENGINE-ONLY: Number of Drills */}
@@ -295,7 +333,7 @@ export default function GenerateScreen() {
                 onChange={setNumDrills}
               />
               {drillsUpgradeHelps && (
-                <UpgradeBanner feature={`up to ${Math.min(6, proAvailable)} drills (only ${drillsMax} on Free)`} />
+                <UpgradeBanner feature={`up to ${Math.min(proCaps.maxDrills, proAvailable)} drills`} />
               )}
               {drillsCappedNoUpgrade && (
                 <View style={styles.capNote}>
@@ -311,24 +349,27 @@ export default function GenerateScreen() {
           {mode === 'ai' && (
             <>
               <View style={styles.section}>
-                <Text style={styles.label}>Focus Area</Text>
-                <Text style={styles.hint}>Choose your practice focus</Text>
+                <Text style={styles.label}>Focus Area ({selectedFocuses.size}/{MAX_FOCUSES})</Text>
+                <Text style={styles.hint}>Select up to {MAX_FOCUSES} areas to focus on</Text>
                 <View style={styles.chipRow}>
                   {visibleFocusOptions.map(opt => {
-                    const isSelected = selectedFocus === opt.id;
+                    const isSelected = selectedFocuses.has(opt.id);
+                    const isDisabled = !isSelected && atMaxFocuses;
                     return (
                       <TouchableOpacity
                         key={opt.id}
                         style={[
                           styles.chip,
                           isSelected && styles.chipSelected,
+                          isDisabled && styles.chipDisabled,
                         ]}
-                        onPress={() => setSelectedFocus(opt.id)}
-                        activeOpacity={0.7}
+                        onPress={() => toggleFocus(opt.id)}
+                        activeOpacity={isDisabled ? 1 : 0.7}
                       >
                         <Text style={[
                           styles.chipText,
                           isSelected && styles.chipTextSelected,
+                          isDisabled && styles.chipTextDisabled,
                         ]}>
                           {opt.label}
                         </Text>
@@ -380,9 +421,18 @@ export default function GenerateScreen() {
 
           {/* Go Button */}
           {mode === 'engine' ? (
-            <TouchableOpacity style={styles.goButton} onPress={handleEngineGo} activeOpacity={0.85}>
-              <Text style={styles.goText}>Generate</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity style={styles.goButton} onPress={handleEngineGo} activeOpacity={0.85}>
+                <Text style={styles.goText}>Generate</Text>
+              </TouchableOpacity>
+              {tier === SubscriptionTier.FREE && (
+                <Text style={styles.generationHint}>
+                  {isUnlimitedAgeGroup(ageGroup)
+                    ? 'Free for this age group — no limits'
+                    : `${freeGenerationsLeft} of ${FREE_GENERATION_LIMIT} free plans remaining`}
+                </Text>
+              )}
+            </>
           ) : (
             <TouchableOpacity
               style={[styles.aiButton, aiButton.disabled && styles.aiButtonDisabled]}
@@ -486,6 +536,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF', fontSize: 18, fontWeight: '700',
     letterSpacing: 1, textTransform: 'uppercase',
   },
+  generationHint: {
+    fontSize: 12, color: '#6B7280', textAlign: 'center',
+    marginTop: 8, fontWeight: '500',
+  },
   aiButton: {
     marginTop: 24, backgroundColor: '#1B4332', borderRadius: 12,
     paddingVertical: 16, alignItems: 'center', justifyContent: 'center',
@@ -524,5 +578,11 @@ const styles = StyleSheet.create({
   },
   chipTextSelected: {
     color: '#FFFFFF',
+  },
+  chipDisabled: {
+    opacity: 0.4,
+  },
+  chipTextDisabled: {
+    color: '#9CA3AF',
   },
 });

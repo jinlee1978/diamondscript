@@ -30,10 +30,13 @@ import {
 import TeamProfileCard from '../../components/TeamProfileCard';
 import TeamFormModal from '../../components/TeamFormModal';
 import { AgeGroup } from '../../src/data/types';
+import { usePractice } from '../../context/PracticeContext';
+import { SubscriptionTier } from '../../src/subscription/tiers';
 
 export default function TeamsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { tier } = usePractice();
   const [store, setStore] = useState<TeamProfileStore | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingProfile, setEditingProfile] = useState<TeamProfile | null>(null);
@@ -207,15 +210,6 @@ export default function TeamsScreen() {
               />
             ))}
 
-            {/* Delete hint - long press the edit menu */}
-            {store.profiles.length > 0 && (
-              <View style={styles.actionRow}>
-                {store.profiles.map(profile => (
-                  <View key={profile.id} />
-                ))}
-              </View>
-            )}
-
             {/* Add Team button */}
             <TouchableOpacity style={styles.addButton} onPress={handleAddTeam}>
               <Ionicons name="add-circle-outline" size={20} color="#1B4332" />
@@ -283,8 +277,13 @@ export default function TeamsScreen() {
         visible={showForm}
         onClose={handleFormClose}
         onSave={handleFormSave}
+        onDelete={editingProfile ? () => {
+          handleFormClose();
+          handleDelete(editingProfile);
+        } : undefined}
         editProfile={editingProfile}
         usedColors={usedColors}
+        tier={tier as SubscriptionTier}
       />
     </>
   );

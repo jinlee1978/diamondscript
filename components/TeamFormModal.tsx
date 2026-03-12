@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { AgeGroup } from '../src/data/types';
 import { TeamProfile, TEAM_COLORS, TEAM_COLOR_NAMES } from '../src/data/types/teamProfile';
+import { SubscriptionTier, getTierCapabilities } from '../src/subscription/tiers';
 
 const AGE_GROUP_OPTIONS: { value: AgeGroup; label: string; sub: string }[] = [
   { value: AgeGroup.INTRO, label: 'Intro', sub: '3-4' },
@@ -51,18 +52,24 @@ interface Props {
     assistantCoaches: number;
     color: string;
   }) => void;
+  /** Called when the user confirms deletion (only relevant in edit mode) */
+  onDelete?: () => void;
   /** If provided, we're editing an existing profile */
   editProfile?: TeamProfile | null;
   /** Colors already in use by other teams (for smart color picking) */
   usedColors?: string[];
+  /** Current subscription tier (for age-aware caps) */
+  tier?: SubscriptionTier;
 }
 
 export default function TeamFormModal({
   visible,
   onClose,
   onSave,
+  onDelete,
   editProfile,
   usedColors = [],
+  tier = SubscriptionTier.FREE,
 }: Props) {
   const [name, setName] = useState('');
   const [ageGroup, setAgeGroup] = useState<AgeGroup>(AgeGroup.KID_PITCH);
@@ -93,6 +100,16 @@ export default function TeamFormModal({
       }
     }
   }, [visible, editProfile, usedColors]);
+
+  // Age-aware caps (experience, intensity limits for young groups)
+  const caps = getTierCapabilities(tier, ageGroup);
+
+  // Clamp values when age group or tier changes
+  useEffect(() => {
+    if (experience > caps.maxExperience) setExperience(caps.maxExperience);
+    if (intensity > caps.maxIntensity) setIntensity(caps.maxIntensity);
+    if (assistants > caps.maxAssistants) setAssistants(caps.maxAssistants);
+  }, [ageGroup, tier]);
 
   const handleSave = () => {
     const trimmed = name.trim();
@@ -176,10 +193,10 @@ export default function TeamFormModal({
               </View>
               <TouchableOpacity
                 style={styles.stepperButton}
-                onPress={() => setExperience(Math.min(5, experience + 1))}
-                disabled={experience >= 5}
+                onPress={() => setExperience(Math.min(caps.maxExperience, experience + 1))}
+                disabled={experience >= caps.maxExperience}
               >
-                <Text style={[styles.stepperButtonText, experience >= 5 && styles.stepperDisabled]}>+</Text>
+                <Text style={[styles.stepperButtonText, experience >= caps.maxExperience && styles.stepperDisabled]}>+</Text>
               </TouchableOpacity>
             </View>
 
@@ -203,10 +220,10 @@ export default function TeamFormModal({
               </View>
               <TouchableOpacity
                 style={styles.stepperButton}
-                onPress={() => setAssistants(Math.min(3, assistants + 1))}
-                disabled={assistants >= 3}
+                onPress={() => setAssistants(Math.min(caps.maxAssistants, assistants + 1))}
+                disabled={assistants >= caps.maxAssistants}
               >
-                <Text style={[styles.stepperButtonText, assistants >= 3 && styles.stepperDisabled]}>+</Text>
+                <Text style={[styles.stepperButtonText, assistants >= caps.maxAssistants && styles.stepperDisabled]}>+</Text>
               </TouchableOpacity>
             </View>
 
@@ -247,6 +264,13 @@ export default function TeamFormModal({
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Delete button (edit mode only) */}
+            {isEditing && onDelete && (
+              <TouchableOpacity style={styles.deleteButton} onPress={onDelete}>
+                <Text style={styles.deleteButtonText}>Delete Team</Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -431,5 +455,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  deleteButton: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#DC2626',
   },
 });

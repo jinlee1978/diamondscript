@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { usePractice } from '../../context/PracticeContext';
 import { AgeGroup } from '../../src/data/types';
+import { SubscriptionTier, getTierCapabilities } from '../../src/subscription/tiers';
 import AgeGroupPicker from '../../components/AgeGroupPicker';
 import Stepper from '../../components/Stepper';
 import UpgradeBanner from '../../components/UpgradeBanner';
@@ -42,14 +43,15 @@ export default function SetupScreen() {
   // BUILD 100: Track active team name for display
   const [activeTeamName, setActiveTeamName] = useState<string | null>(null);
 
-  // Sync when lastRequest loads from AsyncStorage
+  // Sync when lastRequest loads from AsyncStorage (clamp to tier caps, age-aware)
   useEffect(() => {
     if (lastRequest) {
+      const tierCaps = getTierCapabilities(tier as SubscriptionTier, lastRequest.ageGroup);
       setAgeGroup(lastRequest.ageGroup);
-      setExperience(lastRequest.experienceLevel);
-      setIntensity(lastRequest.intensity);
-      setNumDrills(lastRequest.numDrills);
-      setAssistants(lastRequest.assistantCoaches);
+      setExperience(Math.min(lastRequest.experienceLevel, tierCaps.maxExperience));
+      setIntensity(Math.min(lastRequest.intensity, tierCaps.maxIntensity));
+      setNumDrills(Math.min(lastRequest.numDrills, tierCaps.maxDrills));
+      setAssistants(Math.min(lastRequest.assistantCoaches, tierCaps.maxAssistants));
     }
   }, [lastRequest]);
 
@@ -58,10 +60,11 @@ export default function SetupScreen() {
     React.useCallback(() => {
       getActiveTeamProfile().then(team => {
         if (team) {
+          const tierCaps = getTierCapabilities(tier as SubscriptionTier, team.ageGroup);
           setAgeGroup(team.ageGroup);
-          setExperience(team.experienceLevel);
-          setIntensity(team.intensity);
-          setAssistants(team.assistantCoaches);
+          setExperience(Math.min(team.experienceLevel, tierCaps.maxExperience));
+          setIntensity(Math.min(team.intensity, tierCaps.maxIntensity));
+          setAssistants(Math.min(team.assistantCoaches, tierCaps.maxAssistants));
           setActiveTeamName(team.name);
         } else {
           setActiveTeamName(null);
@@ -70,26 +73,27 @@ export default function SetupScreen() {
     }, [])
   );
 
-  // Free tier caps older age groups at 2 drills; Intro and T-Ball are limited only by catalog size
-  const isTBall = ageGroup === AgeGroup.T_BALL || ageGroup === AgeGroup.INTRO;
+  // Tier-driven constraints (age-aware for assistant caps)
+  const caps = getTierCapabilities(tier as SubscriptionTier, ageGroup);
+  const proCaps = getTierCapabilities(SubscriptionTier.PRO, ageGroup);
   const availableDrills = filterCandidates(SEED_DRILL_CATALOG, ageGroup, tier).length;
   const proAvailable = filterCandidates(SEED_DRILL_CATALOG, ageGroup, 'pro').length;
-  const effectiveMax = tier === 'free' && !isTBall ? Math.min(2, availableDrills) : availableDrills;
-  const drillsMax = Math.min(6, effectiveMax);
+  const drillsMax = Math.min(caps.maxDrills, availableDrills);
   const drillsMin = Math.min(3, drillsMax);
-  const drillsUpgradeHelps = tier === 'free' && drillsMax < 6 && Math.min(6, proAvailable) > drillsMax;
-  const drillsCappedNoUpgrade = drillsMax < 6 && !drillsUpgradeHelps;
+  const drillsUpgradeHelps = tier === 'free' && drillsMax < proCaps.maxDrills && Math.min(proCaps.maxDrills, proAvailable) > drillsMax;
+  const drillsCappedNoUpgrade = drillsMax < caps.maxDrills && !drillsUpgradeHelps;
+  const intensityUpgradeHelps = proCaps.maxIntensity > caps.maxIntensity;
+  const assistantsUpgradeHelps = proCaps.maxAssistants > caps.maxAssistants;
 
-  // Clamp numDrills down when switching to an age group with a smaller effective max
+  // Clamp all values when age group or tier changes
   useEffect(() => {
     const available = filterCandidates(SEED_DRILL_CATALOG, ageGroup, tier).length;
-    const isTB = ageGroup === AgeGroup.T_BALL || ageGroup === AgeGroup.INTRO;
-    const max = Math.min(6, tier === 'free' && !isTB ? Math.min(2, available) : available);
+    const max = Math.min(caps.maxDrills, available);
     if (numDrills > max) setNumDrills(max);
+    if (assistants > caps.maxAssistants) setAssistants(caps.maxAssistants);
+    if (intensity > caps.maxIntensity) setIntensity(caps.maxIntensity);
+    if (experience > caps.maxExperience) setExperience(caps.maxExperience);
   }, [ageGroup, tier]);
-
-  const intensityLocked = tier === 'free';
-  const assistantsLocked = tier === 'free';
 
   const handleGo = async () => {
     // BUILD 68: Load coach names from Staff Registry
@@ -145,7 +149,7 @@ export default function SetupScreen() {
               label="Experience"
               value={experience}
               min={0}
-              max={5}
+              max={caps.maxExperience}
               onChange={setExperience}
             />
           </View>
@@ -158,11 +162,10 @@ export default function SetupScreen() {
             label="Intensity"
             value={intensity}
             min={1}
-            max={5}
+            max={caps.maxIntensity}
             onChange={setIntensity}
-            locked={intensityLocked}
           />
-          {intensityLocked && <UpgradeBanner feature="custom intensity" />}
+          {intensityUpgradeHelps && <UpgradeBanner feature={`intensity up to ${proCaps.maxIntensity}`} />}
         </View>
 
         {/* Number of Drills */}
@@ -175,7 +178,7 @@ export default function SetupScreen() {
             onChange={setNumDrills}
           />
           {drillsUpgradeHelps && (
-            <UpgradeBanner feature={`up to ${Math.min(6, proAvailable)} drills (only ${drillsMax} on Free)`} />
+            <UpgradeBanner feature={`up to ${Math.min(proCaps.maxDrills, proAvailable)} drills`} />
           )}
           {drillsCappedNoUpgrade && (
             <View style={styles.capNote}>
@@ -192,11 +195,10 @@ export default function SetupScreen() {
             label="Assistants"
             value={assistants}
             min={0}
-            max={3}
+            max={caps.maxAssistants}
             onChange={setAssistants}
-            locked={assistantsLocked}
           />
-          {assistantsLocked && <UpgradeBanner feature="station splitting" />}
+          {assistantsUpgradeHelps && <UpgradeBanner feature={`up to ${proCaps.maxAssistants} assistants`} />}
         </View>
 
         {/* BUILD 68: Coach names now loaded from Staff Registry automatically */}
