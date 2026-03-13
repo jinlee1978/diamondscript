@@ -163,7 +163,7 @@ export default function GenerateScreen() {
       if (tier === SubscriptionTier.FREE) {
         refreshGenerationsLeft(ageGroup);
       }
-    }, [tier])
+    }, [tier, ageGroup, refreshGenerationsLeft])
   );
 
   // NetInfo

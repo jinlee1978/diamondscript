@@ -105,7 +105,7 @@ function getMostPracticedAge(history: HistoryEntry[]): string | null {
   return sorted[0]?.[0] || null;
 }
 
-const FREE_HISTORY_LIMIT = 5;
+const FREE_HISTORY_LIMIT = 3; // Must match PracticeContext and CLAUDE.md (source of truth)
 const CATEGORY_ORDER: DrillCategory[] = ['hitting', 'fielding', 'pitching', 'baserunning'];
 
 // Filter chip options
@@ -148,8 +148,12 @@ export default function HistoryScreen() {
     setShareSession(session);
   }, []);
 
+  // BUILD 107: Share freeze fix — keep modal open during Share.share() to avoid
+  // race condition between modal dismiss animation and iOS share sheet (Known Issue #7).
+  const [isSharing, setIsSharing] = useState(false);
   const executeShare = useCallback(async () => {
-    if (!shareSession) return;
+    if (!shareSession || isSharing) return;
+    setIsSharing(true);
     try {
       const ageLabel = formatAgeGroupShort(shareSession.request.ageGroup);
       const drillCount = shareSession.selectedDrills.length;
@@ -163,9 +167,16 @@ export default function HistoryScreen() {
       };
       const shareMessage = `Check out this practice from DiamondScript:\n\n${ageLabel} \u2022 ${drillCount} drills \u2022 ${duration} min\n\nCopy this message to import it!\n\n{DIAMONDSCRIPT_DATA:${JSON.stringify(shareData)}}`;
       await Share.share({ message: shareMessage });
+    } catch (error) {
+      // Only log real errors, not user cancellation
+      if (error instanceof Error && error.message !== 'User did not share') {
+        console.error('History share failed:', error);
+      }
+    } finally {
+      setIsSharing(false);
       setShareSession(null);
-    } catch { /* cancelled */ }
-  }, [shareSession]);
+    }
+  }, [shareSession, isSharing]);
 
   // Delete confirmation
   const handleDelete = useCallback((savedAt: number) => {
@@ -633,13 +644,13 @@ export default function HistoryScreen() {
 
       {/* Share Preview Modal */}
       {shareSession && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setShareSession(null)}>
+        <Modal visible transparent animationType="fade" onRequestClose={() => { if (!isSharing) setShareSession(null); }}>
           <TouchableOpacity
             style={styles.shareBackdrop}
             activeOpacity={1}
-            onPress={() => setShareSession(null)}
+            onPress={() => { if (!isSharing) setShareSession(null); }}
           >
-            <View style={styles.shareSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.shareSheet} onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => false}>
               <View style={styles.shareIconCircle}>
                 <Ionicons name="share-outline" size={24} color="#1B4332" />
               </View>
@@ -674,12 +685,17 @@ export default function HistoryScreen() {
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.shareButton} onPress={executeShare} activeOpacity={0.85}>
+              <TouchableOpacity
+                style={[styles.shareButton, isSharing && { opacity: 0.5 }]}
+                onPress={executeShare}
+                activeOpacity={0.85}
+                disabled={isSharing}
+              >
                 <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.shareButtonText}>Share Now</Text>
+                <Text style={styles.shareButtonText}>{isSharing ? 'Sharing...' : 'Share Now'}</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.shareCancel} onPress={() => setShareSession(null)}>
+              <TouchableOpacity style={[styles.shareCancel, isSharing && { opacity: 0.5 }]} onPress={() => { if (!isSharing) setShareSession(null); }} disabled={isSharing}>
                 <Text style={styles.shareCancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>

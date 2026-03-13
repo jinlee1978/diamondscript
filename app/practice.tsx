@@ -31,6 +31,7 @@ import { loadCoachingStaff } from '../src/data/storage/coachingStorage';
 import { CoachingStaff, getCoachColor } from '../src/data/types/coach';
 import { ensureTimelineWithSync } from '../src/data/storage/practiceSessionStorage';
 import { autoAssignDrillsToStaff, countUnassignedDrills, getCoachDisplayName } from '../src/logic/coachMatcher';
+import { BASE_RPM } from '../src/core/constants/intensityConfig';
 
 // BUILD 100: Display-friendly label for the age group enum value (7 groups)
 function formatAgeGroup(raw: string): string {
@@ -85,9 +86,61 @@ function formatSessionForShare(session: PracticeSession): string {
     '',
   ];
 
+  // BUILD 107: Recalculate timing at share time based on current drill grouping
+  const shareAvailableDrillTime = stationLayout.totalWallClockMinutes - warmupMinutes - cooldownMinutes;
+  const shareRPM = BASE_RPM + request.intensity;
+  const shareTransition = Math.round(stationLayout.transitionTimeMinutes);
+  // Helper: format a group of drills with proportional time redistribution.
+  // Uses weighted largest-remainder to preserve AI timing ratios while ensuring exact sums.
+  function formatDrillGroup(
+    drills: { drill: { name: string; equipment?: string[] }; reps: number; bonusReps: number; timeMinutes: number }[],
+    coachLabel: string
+  ) {
+    const drillCount = drills.length;
+    if (drillCount === 0) return; // Guard: skip empty groups
+    const totalTransitions = (drillCount - 1) * shareTransition;
+    const pureDrillMinutes = Math.max(0, shareAvailableDrillTime - totalTransitions); // Guard: never negative
+
+    // Proportional redistribution using weighted largest-remainder
+    const totalWeight = drills.reduce((sum, b) => sum + Math.max(b.timeMinutes, 1), 0);
+    const entries: { index: number; floored: number; remainder: number }[] = [];
+    let flooredSum = 0;
+    drills.forEach((block, di) => {
+      const weight = Math.max(block.timeMinutes, 1);
+      const exactTime = (weight / totalWeight) * pureDrillMinutes;
+      const floored = Math.floor(exactTime);
+      entries.push({ index: di, floored, remainder: exactTime - floored });
+      flooredSum += floored;
+    });
+    let leftover = pureDrillMinutes - flooredSum;
+    const sorted = [...entries].sort((a, b) => b.remainder - a.remainder);
+    for (const entry of sorted) {
+      if (leftover <= 0) break;
+      entry.floored += 1;
+      leftover -= 1;
+    }
+    // Restore original order
+    entries.sort((a, b) => a.index - b.index);
+
+    const groupTotal = pureDrillMinutes + totalTransitions;
+    lines.push(`${coachLabel} (${groupTotal} min)`);
+    entries.forEach((entry, di) => {
+      const block = drills[entry.index];
+      const drillTime = entry.floored;
+      const drillReps = Math.round(drillTime * shareRPM);
+      lines.push(`  \u2022 ${block.drill.name} \u2014 ${drillReps} reps \u00B7 ${drillTime} min`);
+      if (block.drill.equipment && block.drill.equipment.length > 0) {
+        lines.push(`    Equipment: ${block.drill.equipment.join(', ')}`);
+      }
+      if (di < drills.length - 1) {
+        lines.push(`  \u2193 ${shareTransition} min transition`);
+      }
+    });
+    lines.push('');
+  }
+
   // BUILD 73: Use timeline for proper coach grouping
   if (timeline?.drills && timeline.drills.length > 0) {
-    // Group drills by coach for share output
     const coachDrillMap = new Map<string, typeof timeline.drills>();
     for (const drill of timeline.drills) {
       const coachId = drill.assignedCoachId || 'head-coach-default';
@@ -97,26 +150,19 @@ function formatSessionForShare(session: PracticeSession): string {
       coachDrillMap.get(coachId)!.push(drill);
     }
 
+    const groupCount = coachDrillMap.size;
     let coachIndex = 0;
     for (const [_coachId, drills] of coachDrillMap) {
-      // Determine coach label from coachNames or defaults
       const coachLabel = coachNames?.[coachIndex] ||
         DEFAULT_COACH_LABELS[coachIndex] ||
         `Coach ${coachIndex + 1}`;
-
-      lines.push(coachLabel);
-      drills.forEach((block, di) => {
-        const totalReps = block.reps + block.bonusReps;
-        lines.push(`  \u2022 ${block.drill.name} \u2014 ${totalReps} reps \u00B7 ${block.timeMinutes.toFixed(1)} min`);
-        if (block.drill.equipment && block.drill.equipment.length > 0) {
-          lines.push(`    Equipment: ${block.drill.equipment.join(', ')}`);
-        }
-        if (di < drills.length - 1) {
-          lines.push(`  \u2193 ${stationLayout.transitionTimeMinutes} min transition`);
-        }
-      });
-      lines.push('');
+      formatDrillGroup(drills, coachLabel);
       coachIndex++;
+    }
+
+    if (groupCount > 1) {
+      lines.push(`(${groupCount} stations run at the same time)`);
+      lines.push('');
     }
   } else {
     // Fallback to station-based output (legacy sessions)
@@ -124,20 +170,13 @@ function formatSessionForShare(session: PracticeSession): string {
       const coachLabel = coachNames?.[station.coachIndex] ||
         DEFAULT_COACH_LABELS[station.coachIndex] ||
         `Coach ${station.coachIndex + 1}`;
-
-      lines.push(coachLabel);
-      station.drills.forEach((block, di) => {
-        const totalReps = block.reps + block.bonusReps;
-        lines.push(`  \u2022 ${block.drill.name} \u2014 ${totalReps} reps \u00B7 ${block.timeMinutes.toFixed(1)} min`);
-        if (block.drill.equipment && block.drill.equipment.length > 0) {
-          lines.push(`    Equipment: ${block.drill.equipment.join(', ')}`);
-        }
-        if (di < station.drills.length - 1) {
-          lines.push(`  \u2193 ${stationLayout.transitionTimeMinutes} min transition`);
-        }
-      });
-      lines.push('');
+      formatDrillGroup(station.drills, coachLabel);
     });
+
+    if (stationLayout.stations.length > 1) {
+      lines.push(`(${stationLayout.stations.length} stations run at the same time)`);
+      lines.push('');
+    }
   }
 
   lines.push(`Cool Down: ${cooldownMinutes} min`);
@@ -214,6 +253,7 @@ export default function PracticeScreen() {
   } = usePractice();
   const [showAddPicker, setShowAddPicker] = useState(false);
   const [showSharePreview, setShowSharePreview] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
@@ -278,18 +318,88 @@ export default function PracticeScreen() {
 
   const { warmupMinutes, cooldownMinutes, stationLayout, request, selectedDrills } = currentSession;
 
-  // BUILD 73: Use timeline.drills as source of truth, fallback to stationLayout
-  const timelineDrills = currentSession.timeline?.drills ||
-    stationLayout.stations.flatMap((s, si) =>
-      s.drills.map((d, di) => ({
-        ...d,
-        assignedCoachId: si === 0 ? 'head-coach-default' : `assistant-placeholder-${si}`,
-        order: si * 100 + di
-      }))
-    );
+  // BUILD 73: Use timeline.drills as source of truth, fallback to stationLayout.
+  // Memoized so the fallback flatMap doesn't create a new array reference every render,
+  // which would defeat downstream useMemo hooks (coachGroups, adjustedDrillValues).
+  const timelineDrills = useMemo(
+    () => currentSession.timeline?.drills ||
+      stationLayout.stations.flatMap((s, si) =>
+        s.drills.map((d, di) => ({
+          ...d,
+          assignedCoachId: si === 0 ? 'head-coach-default' : `assistant-placeholder-${si}`,
+          order: si * 100 + di
+        }))
+      ),
+    [currentSession.timeline?.drills, stationLayout.stations]
+  );
 
-  // Group drills by coach for visual rendering
-  const coachGroups = groupDrillsByCoach(timelineDrills, staff, currentSession.coachNames);
+  // Group drills by coach for visual rendering — memoized so downstream
+  // useMemo hooks only recompute when drills/staff/names actually change.
+  const coachGroups = useMemo(
+    () => groupDrillsByCoach(timelineDrills, staff, currentSession.coachNames),
+    [timelineDrills, staff, currentSession.coachNames]
+  );
+
+  // BUILD 107: Recalculate per-drill time and reps based on CURRENT grouping.
+  // When drills are moved between coaches, the original engine values become stale.
+  // Every coach group runs during the same wall-clock window (availableDrillTime),
+  // so we redistribute time proportionally within each group.
+  //
+  // PROPORTIONAL REDISTRIBUTION: Each drill's share of the group time is weighted
+  // by its original timeMinutes value (from the engine or AI). This preserves the
+  // AI's intended pacing (e.g., 12-min hitting drill stays ~2x a 6-min baserunning
+  // drill). For Quick Plan sessions where the engine assigns equal times, proportional
+  // = equal, so behavior is identical.
+  //
+  // Rounding strategy: weighted largest-remainder method. Scale each drill proportionally,
+  // floor all values, then distribute the leftover minutes to drills with the largest
+  // fractional remainders. Guarantees whole numbers that sum exactly.
+  const availableDrillTime = stationLayout.totalWallClockMinutes - warmupMinutes - cooldownMinutes;
+  const rpm = BASE_RPM + request.intensity;
+  const roundedTransition = Math.round(stationLayout.transitionTimeMinutes);
+
+  // Map from timeline index → adjusted { time, reps } for display
+  const adjustedDrillValues = useMemo(() => {
+    const values = new Map<number, { time: number; reps: number }>();
+    for (const group of coachGroups) {
+      const drillCount = group.drills.length;
+      if (drillCount === 0) continue; // Guard: skip empty groups
+      const totalTransitions = (drillCount - 1) * roundedTransition;
+      const pureDrillMinutes = Math.max(0, availableDrillTime - totalTransitions); // Guard: never negative
+
+      // Sum original weights for this group
+      const totalWeight = group.drills.reduce((sum, { block }) => sum + Math.max(block.timeMinutes, 1), 0);
+
+      // Calculate proportional time and track remainders for largest-remainder rounding
+      const entries: { timelineIndex: number; floored: number; remainder: number }[] = [];
+      let flooredSum = 0;
+      for (const { block, timelineIndex } of group.drills) {
+        const weight = Math.max(block.timeMinutes, 1);
+        const exactTime = (weight / totalWeight) * pureDrillMinutes;
+        const floored = Math.floor(exactTime);
+        entries.push({ timelineIndex, floored, remainder: exactTime - floored });
+        flooredSum += floored;
+      }
+
+      // Distribute leftover minutes to drills with largest fractional remainders
+      let leftover = pureDrillMinutes - flooredSum;
+      const sorted = [...entries].sort((a, b) => b.remainder - a.remainder);
+      for (const entry of sorted) {
+        if (leftover <= 0) break;
+        entry.floored += 1;
+        leftover -= 1;
+      }
+
+      // Write final values
+      for (const entry of entries) {
+        values.set(entry.timelineIndex, {
+          time: entry.floored,
+          reps: Math.round(entry.floored * rpm),
+        });
+      }
+    }
+    return values;
+  }, [coachGroups, availableDrillTime, roundedTransition, rpm]);
 
   // Memoize expensive drill filtering calculations
   const { hasShortfall, upgradeHelps, canAddDrill, addableDrills } = useMemo(() => {
@@ -320,8 +430,12 @@ export default function PracticeScreen() {
     setShowSharePreview(true);
   };
 
+  // BUILD 107: Share freeze fix — keep modal open during Share.share() to avoid
+  // race condition between modal dismiss animation and iOS share sheet.
+  // Modal only closes in finally{} after share completes or is cancelled.
   const executeShare = async () => {
-    setShowSharePreview(false);
+    if (isSharing) return; // Guard: prevent double-tap
+    setIsSharing(true);
     try {
       const practiceData = {
         type: 'practice',
@@ -351,23 +465,30 @@ export default function PracticeScreen() {
         await Share.share({
           title: `DiamondScript \u2014 ${formatAgeGroup(request.ageGroup)} Practice`,
           message,
-        }).catch(() => {});
+        });
       } else {
         await Share.share({
           title: `DiamondScript \u2014 ${formatAgeGroup(request.ageGroup)} Practice`,
           message: `${textPlan}\n\nCopy this message to import the practice plan!\n\n${magicPayload}`,
-        }).catch(() => {});
+        });
       }
     } catch (error) {
-      console.error('Practice share failed:', error);
-      try {
-        await Share.share({
-          title: 'DiamondScript Practice',
-          message: `DiamondScript Practice Plan\n\nAge Group: ${formatAgeGroup(request.ageGroup)}\nDuration: ${stationLayout.totalWallClockMinutes} minutes`,
-        }).catch(() => {});
-      } catch {
-        // Absolute last resort - do nothing
+      // Share cancelled or failed — only attempt fallback for real errors, not user cancellation
+      if (error instanceof Error && error.message !== 'User did not share') {
+        console.error('Practice share failed:', error);
+        try {
+          await Share.share({
+            title: 'DiamondScript Practice',
+            message: `DiamondScript Practice Plan\n\nAge Group: ${formatAgeGroup(request.ageGroup)}\nDuration: ${stationLayout.totalWallClockMinutes} minutes`,
+          });
+        } catch {
+          // Absolute last resort - do nothing
+        }
       }
+    } finally {
+      // Always dismiss the share preview modal AFTER sharing completes
+      setIsSharing(false);
+      setShowSharePreview(false);
     }
   };
 
@@ -477,10 +598,20 @@ export default function PracticeScreen() {
         <Text style={styles.bookendNote}>Stretch, light jog, arm circles</Text>
       </View>
 
-      {/* BUILD 73: FLAT TIMELINE RENDERING - Drills grouped by coach but arrows cross boundaries */}
-      {coachGroups.map((group, groupIndex) => (
+      {/* BUILD 107: FLAT TIMELINE RENDERING - Drills grouped by coach, transitions only within groups */}
+      {coachGroups.map((group, groupIndex) => {
+        // BUILD 107: Per-group total = sum of that group's drill times + transitions.
+        // This matches what a coach can manually add up from the drill cards.
+        const groupDrillSum = group.drills.reduce((sum, { timelineIndex }) => {
+          const adj = adjustedDrillValues.get(timelineIndex);
+          return sum + (adj?.time ?? 0);
+        }, 0);
+        const groupTransitions = Math.max(0, group.drills.length - 1) * roundedTransition;
+        const groupTotalMinutes = groupDrillSum + groupTransitions;
+
+        return (
         <View key={group.coachId} style={styles.coachSection}>
-          {/* Coach Header */}
+          {/* Coach Header with group time total */}
           <View style={[
             styles.coachHeader,
             group.coachColors && { backgroundColor: group.coachColors.bg, borderColor: group.coachColors.border }
@@ -492,15 +623,20 @@ export default function PracticeScreen() {
               {group.coachName}
             </Text>
             <Text style={styles.coachDrillCount}>
-              {group.drills.length} drill{group.drills.length !== 1 ? 's' : ''}
+              {group.drills.length} drill{group.drills.length !== 1 ? 's' : ''} {'\u00B7'} {groupTotalMinutes} min
             </Text>
           </View>
 
           {/* Drills under this coach */}
           {group.drills.map(({ block, timelineIndex }, drillIndexInGroup) => {
-            // BUILD 73: isFirst/isLast based on GLOBAL timeline position
+            // BUILD 73: isFirst/isLast based on GLOBAL timeline position (for edit mode arrows)
             const isFirstInTimeline = timelineIndex === 0;
             const isLastInTimeline = timelineIndex === timelineDrills.length - 1;
+            // BUILD 107: Transition arrows only between drills WITHIN the same coach group.
+            // Cross-group transitions are wrong — parallel stations don't transition sequentially.
+            const isLastInGroup = drillIndexInGroup === group.drills.length - 1;
+
+            const adjusted = adjustedDrillValues.get(timelineIndex);
 
             return (
               <View key={block.id || `drill-${timelineIndex}`}>
@@ -510,6 +646,9 @@ export default function PracticeScreen() {
                   blockIndex={drillIndexInGroup}
                   isFirst={isFirstInTimeline}
                   isLast={isLastInTimeline}
+                  showTransitionArrow={!isLastInGroup}
+                  displayTime={adjusted?.time}
+                  displayReps={adjusted?.reps}
                   transitionMinutes={stationLayout.transitionTimeMinutes}
                   isEditMode={isEditMode}
                   timelineIndex={timelineIndex}
@@ -520,7 +659,8 @@ export default function PracticeScreen() {
             );
           })}
         </View>
-      ))}
+        );
+      })}
 
       {/* Edit mode indicator */}
       {isEditMode && (
@@ -555,7 +695,7 @@ export default function PracticeScreen() {
         </Text>
         {coachGroups.length > 1 && (
           <Text style={styles.footerSub}>
-            {coachGroups.length} coaches assigned
+            {coachGroups.length} coaches — stations run at the same time
           </Text>
         )}
       </View>
@@ -620,13 +760,13 @@ export default function PracticeScreen() {
     )}
     {/* Share Preview Modal */}
     {showSharePreview && (
-      <Modal visible transparent animationType="fade" onRequestClose={() => setShowSharePreview(false)}>
+      <Modal visible transparent animationType="fade" onRequestClose={() => { if (!isSharing) setShowSharePreview(false); }}>
         <TouchableOpacity
           style={styles.shareBackdrop}
           activeOpacity={1}
-          onPress={() => setShowSharePreview(false)}
+          onPress={() => { if (!isSharing) setShowSharePreview(false); }}
         >
-          <View style={styles.sharePreviewSheet} onStartShouldSetResponder={() => true}>
+          <View style={styles.sharePreviewSheet} onStartShouldSetResponder={() => true} onMoveShouldSetResponder={() => false}>
             {/* Icon */}
             <View style={styles.shareIconCircle}>
               <Ionicons name="share-outline" size={24} color="#1B4332" />
@@ -664,12 +804,17 @@ export default function PracticeScreen() {
             </View>
 
             {/* Actions */}
-            <TouchableOpacity style={styles.sharePreviewButton} onPress={executeShare} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={[styles.sharePreviewButton, isSharing && { opacity: 0.5 }]}
+              onPress={executeShare}
+              activeOpacity={0.85}
+              disabled={isSharing}
+            >
               <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.sharePreviewButtonText}>Share Now</Text>
+              <Text style={styles.sharePreviewButtonText}>{isSharing ? 'Sharing...' : 'Share Now'}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sharePreviewCancel} onPress={() => setShowSharePreview(false)}>
+            <TouchableOpacity style={[styles.sharePreviewCancel, isSharing && { opacity: 0.5 }]} onPress={() => { if (!isSharing) setShowSharePreview(false); }} disabled={isSharing}>
               <Text style={styles.sharePreviewCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>

@@ -319,18 +319,18 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {history.slice(0, 3).filter(s => s?.request).map((session, i) => (
+                {history.slice(0, 3).filter(s => s?.session?.request).map((entry, i) => (
                   <TouchableOpacity
-                    key={session.savedAt?.toString() || i}
+                    key={entry.savedAt?.toString() || i}
                     style={styles.recentCard}
                     onPress={() => router.navigate('/history')}
                     activeOpacity={0.8}
                   >
                     <View style={styles.recentCardLeft}>
-                      <Text style={styles.recentCardAge}>{formatAgeGroup(session.request?.ageGroup ?? 'Unknown')}</Text>
+                      <Text style={styles.recentCardAge}>{formatAgeGroup(entry.session.request?.ageGroup ?? 'Unknown')}</Text>
                       <Text style={styles.recentCardMeta}>
-                        {session.selectedDrills?.length ?? 0} drills  {'\u2022'}  {session.stationLayout?.totalWallClockMinutes ?? 0} min
-                        {session.source === 'ai' ? '  \u2022  AI' : ''}
+                        {entry.session.selectedDrills?.length ?? 0} drills  {'\u2022'}  {entry.session.stationLayout?.totalWallClockMinutes ?? 0} min
+                        {entry.session.source === 'ai' ? '  \u2022  AI' : ''}
                       </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={14} color="#D1D5DB" />

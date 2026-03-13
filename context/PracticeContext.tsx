@@ -357,6 +357,25 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
   const swapDrill = useCallback((stationIndex: number, blockIndex: number, newDrill: Drill) => {
     setCurrentSession((prev) => {
       if (!prev) return prev;
+
+      let updatedSession: PracticeSession;
+
+      // BUILD 107: If using flat timeline, swap in timeline (blockIndex = timeline index).
+      // Without this, swap only modifies stationLayout which is invisible for timeline-based sessions.
+      if (prev.timeline?.drills) {
+        const newDrills = prev.timeline.drills.map((block, idx) =>
+          idx !== blockIndex ? block : { ...block, drill: newDrill }
+        );
+        updatedSession = {
+          ...prev,
+          selectedDrills: newDrills.map(b => b.drill), // Keep selectedDrills in sync
+          timeline: { ...prev.timeline, drills: newDrills },
+        };
+        syncSessionToHistory(updatedSession);
+        return updatedSession;
+      }
+
+      // Legacy: swap in stationLayout
       const stations = prev.stationLayout.stations.map((station, si) =>
         si !== stationIndex
           ? station
@@ -367,7 +386,7 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
               ),
             },
       );
-      const updatedSession: PracticeSession = { ...prev, stationLayout: { ...prev.stationLayout, stations } };
+      updatedSession = { ...prev, stationLayout: { ...prev.stationLayout, stations } };
 
       // BUILD 72: Non-blocking background save
       syncSessionToHistory(updatedSession);
@@ -399,6 +418,7 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
 
         updatedSession = {
           ...prev,
+          selectedDrills: newDrills.map(b => b.drill), // Keep selectedDrills in sync
           timeline: {
             ...prev.timeline,
             drills: newDrills,
@@ -464,6 +484,7 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
 
         updatedSession = {
           ...prev,
+          selectedDrills: reorderedDrills.map(b => b.drill), // Keep selectedDrills in sync
           timeline: {
             ...prev.timeline,
             drills: reorderedDrills,
@@ -549,6 +570,9 @@ export function PracticeProvider({ children }: { children: React.ReactNode }) {
         );
         drillsArray = [...timeline.drills];
       }
+
+      // Guard: need at least 2 drills to reorder
+      if (drillsArray.length < 2) return prev;
 
       const targetIndex = direction === 'up' ? drillIndex - 1 : drillIndex + 1;
 

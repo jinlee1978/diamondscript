@@ -11,7 +11,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, Share } from 'react-native';
 import { DrillBlock, Drill } from '../src/data/types';
 import { usePractice, CustomDrill } from '../context/PracticeContext';
@@ -29,6 +29,11 @@ interface Props {
   isFirst: boolean;
   transitionMinutes: number;
   isEditMode?: boolean;
+  /** BUILD 107: Show transition arrow after this drill (within same coach group only) */
+  showTransitionArrow?: boolean;
+  /** BUILD 107: Adjusted time/reps recalculated for current coach grouping */
+  displayTime?: number;
+  displayReps?: number;
   /** BUILD 70: Timeline index for manuallyAssignDrillToCoach */
   timelineIndex?: number;
   onMoveUp?: () => void;
@@ -58,6 +63,9 @@ const DrillCard = React.memo(function DrillCard({
   isFirst,
   transitionMinutes,
   isEditMode = false,
+  showTransitionArrow,
+  displayTime,
+  displayReps,
   timelineIndex,
   onMoveUp,
   onMoveDown
@@ -131,15 +139,19 @@ const DrillCard = React.memo(function DrillCard({
   }
 
   const isStarred = starredDrills.has(block.drill.id);
-  const totalReps = block.reps + block.bonusReps;
+  // BUILD 107: Use adjusted values when provided (recalculated for current coach grouping)
+  const effectiveReps = displayReps ?? (block.reps + block.bonusReps);
+  const effectiveTime = displayTime ?? block.timeMinutes;
 
   const replacementDrills: Drill[] = [
     ...SEED_DRILL_CATALOG.filter((d) => starredDrills.has(d.id) && d.id !== block.drill.id),
     ...customDrills.filter((c) => c.id !== block.drill.id).map(customToDrill),
   ];
 
+  // BUILD 107: Use timelineIndex for timeline-based sessions (multi-coach safe).
+  // blockIndex is relative to coach group, timelineIndex is absolute in timeline array.
   const handleSwap = (drill: Drill) => {
-    swapDrill(stationIndex, blockIndex, drill);
+    swapDrill(stationIndex, timelineIndex ?? blockIndex, drill);
     setShowPicker(false);
   };
 
@@ -150,13 +162,33 @@ const DrillCard = React.memo(function DrillCard({
     ? getCoachDisplayName(coachId, staff, block.drill.category)
     : null;
 
+  // BUILD 107: Detect custom or AI-generated drill for badge display
+  // Memoized to avoid O(n) lookup on every render for every drill card
+  const isCustomDrill = useMemo(
+    () => customDrills.some((c) => c.id === block.drill.id),
+    [customDrills, block.drill.id]
+  );
+  const isAIDrill = block.drill.id?.startsWith('ai-') ?? false;
+
   // BUILD 70: Get available coaches for picker
   const availableCoaches = staff?.coaches.filter(c => c.role === 'head' || c.isActive) || [];
 
   const cardContent = (
     <>
       <View style={styles.header}>
-        <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{block.drill.name}</Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{block.drill.name}</Text>
+          {isCustomDrill && (
+            <View style={styles.drillSourceBadge}>
+              <Text style={styles.drillSourceBadgeText}>Custom</Text>
+            </View>
+          )}
+          {isAIDrill && !isCustomDrill && (
+            <View style={[styles.drillSourceBadge, styles.drillSourceBadgeAI]}>
+              <Text style={styles.drillSourceBadgeText}>AI</Text>
+            </View>
+          )}
+        </View>
         <View style={styles.headerRight}>
             {/* Reorder arrows - only show in edit mode */}
             {isEditMode && (
@@ -182,7 +214,7 @@ const DrillCard = React.memo(function DrillCard({
               </View>
             )}
             <TouchableOpacity
-              onPress={() => removeDrillFromSession(stationIndex, blockIndex)}
+              onPress={() => removeDrillFromSession(stationIndex, timelineIndex ?? blockIndex)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Text style={styles.deleteIcon}>{'\u00D7'}</Text>
@@ -213,7 +245,7 @@ const DrillCard = React.memo(function DrillCard({
               ? { backgroundColor: coachColors.bg, borderColor: coachColors.border }
               : styles.coachBadgeUnassigned
           ]}
-          onPress={() => setShowCoachPicker(true)}
+          onPress={() => { setShowPicker(false); setShowCoachPicker(true); }}
           hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
         >
           <Text style={[
@@ -236,36 +268,18 @@ const DrillCard = React.memo(function DrillCard({
 
         <View style={styles.stats}>
           <View style={styles.stat}>
-            <Text style={styles.statValue}>{totalReps}</Text>
+            <Text style={styles.statValue}>{effectiveReps}</Text>
             <Text style={styles.statLabel}>Reps</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.stat}>
-            <Text style={styles.statValue}>{block.timeMinutes.toFixed(1)}</Text>
+            <Text style={styles.statValue}>{Math.round(effectiveTime)}</Text>
             <Text style={styles.statLabel}>Min</Text>
           </View>
-          {block.bonusReps > 0 && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.stat}>
-                <Text style={[styles.statValue, styles.bonusValue]}>+{block.bonusReps}</Text>
-                <Text style={styles.statLabel}>Bonus</Text>
-              </View>
-            </>
-          )}
-          {block.openTimeMinutes > 0 && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.stat}>
-                <Text style={[styles.statValue, styles.openValue]}>{block.openTimeMinutes.toFixed(1)}</Text>
-                <Text style={styles.statLabel}>Open</Text>
-              </View>
-            </>
-          )}
         </View>
 
       {replacementDrills.length > 0 && (
-        <TouchableOpacity style={styles.swapTrigger} onPress={() => setShowPicker(true)}>
+        <TouchableOpacity style={styles.swapTrigger} onPress={() => { setShowCoachPicker(false); setShowPicker(true); }}>
           <Text style={styles.swapTriggerText}>Swap drill</Text>
         </TouchableOpacity>
       )}
@@ -278,10 +292,11 @@ const DrillCard = React.memo(function DrillCard({
         {cardContent}
       </View>
 
-      {/* Transition arrow between drills */}
-      {!isLast && (
+      {/* BUILD 107: Transition arrow between drills WITHIN same coach group only.
+          showTransitionArrow controls per-group display; falls back to !isLast for backwards compat. */}
+      {(showTransitionArrow !== undefined ? showTransitionArrow : !isLast) && (
         <View style={styles.transition}>
-          <Text style={styles.transitionText}>{transitionMinutes} min transition</Text>
+          <Text style={styles.transitionText}>{Math.round(transitionMinutes)} min transition</Text>
           <Text style={styles.arrow}>&#8595;</Text>
         </View>
       )}
@@ -408,11 +423,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 6,
+  },
   name: {
     fontSize: 15,
     fontWeight: '600',
     color: '#111827',
-    flex: 1,
+    flexShrink: 1,
+  },
+  drillSourceBadge: {
+    backgroundColor: '#E0F2FE',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  drillSourceBadgeAI: {
+    backgroundColor: '#F3E8FF',
+  },
+  drillSourceBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#374151',
   },
   headerRight: {
     flexDirection: 'row',

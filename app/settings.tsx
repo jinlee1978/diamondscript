@@ -16,6 +16,7 @@ import { Stack, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
+import Constants from 'expo-constants';
 import {
   exportBackup, backupToString, parseBackup, importBackup,
   estimateBackupSize, formatBytes, BackupData,
@@ -277,7 +278,7 @@ export default function SettingsScreen() {
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Version</Text>
-              <Text style={styles.infoValue}>1.0.0 (Build 105)</Text>
+              <Text style={styles.infoValue}>{Constants.expoConfig?.version ?? '1.1.2'} (Build {Constants.expoConfig?.ios?.buildNumber ?? '16'})</Text>
             </View>
             <View style={styles.infoDivider} />
             <View style={styles.infoRow}>
