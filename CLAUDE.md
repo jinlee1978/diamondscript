@@ -125,14 +125,14 @@ App Store Connect metadata checklist (manual):
 | `privacy-policy.html` | Privacy policy source (also copied to `privacy/index.html`) |
 | `src/data/storage/generationTracker.ts` | Age-aware free generation tracking (UNLIMITED_AGE_GROUPS, FREE_GENERATION_LIMIT) |
 | `app/_layout.tsx` | Root layout — single PaywallModal instance lives here |
-| `app.json` | Version: 1.1.2, buildNumber: 16, versionCode: 106 |
+| `app.json` | Version: 1.1.3, buildNumber: 17, versionCode: 107 |
 
 ---
 
 ## App Store Submission Status
 
-**Current version:** 1.1.2 (buildNumber 16, versionCode 106)
-**Status:** Submitted to Apple — Waiting for Review (March 12, 2026).
+**Current version:** 1.1.3 (buildNumber 17, versionCode 107)
+**Status:** Building for submission (March 12, 2026).
 **IAP:** "DiamondScript Pro" (com.diamondscript.app.monthly) — Approved, attached to submission.
 
 ### Rejection History
